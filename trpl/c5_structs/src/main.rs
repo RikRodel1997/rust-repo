@@ -1,6 +1,6 @@
 mod structs;
 
-use structs::{Rectangle, User};
+use structs::{ Rectangle, User };
 
 fn main() {
     // c5_1_defining_structs();
@@ -9,7 +9,15 @@ fn main() {
 }
 
 fn c5_3_method_syntax() {
+    let rect1 = Rectangle { length: 50, width: 30 };
+    let rect2 = Rectangle { length: 40, width: 10 };
+    let rect3 = Rectangle { length: 45, width: 60 };
 
+    rect1.can_hold(&rect2);
+    rect1.can_hold(&rect3);
+
+    let square1 = Rectangle::square(20);
+    println!("Area of square is {}", square1.area());
 }
 
 fn c5_2_rectangle() {
