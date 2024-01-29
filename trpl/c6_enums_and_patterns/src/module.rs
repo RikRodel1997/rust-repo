@@ -1,3 +1,5 @@
+use strum_macros::EnumIter; // 0.17.1
+
 #[derive(Debug)]
 pub enum IpAddr {
     V4(u8, u8, u8, u8),
@@ -16,3 +18,20 @@ impl Message {
     pub fn call(&self) {
     }
 }
+
+
+#[derive(Debug, EnumIter)]
+pub enum Coin {
+    Penny,
+    Nickel,
+    Dime,
+    Quarter(UsState),
+}
+
+#[derive(Default, Debug, EnumIter)]
+pub enum UsState {
+    Alabama,
+    Alaska,
+    #[default] Etc,
+}
+
