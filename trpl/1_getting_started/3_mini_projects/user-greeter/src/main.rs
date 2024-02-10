@@ -2,11 +2,11 @@ use std::io;
 
 #[derive(Debug)]
 enum Languages {
-    English(&'static str),
-    Dutch(&'static str),
-    Japanese(&'static str),
-    Spanish(&'static str),
-    Unknown(&'static str)
+    English(String),
+    Dutch(String),
+    Japanese(String),
+    Spanish(String),
+    Unknown(String)
 }
 
 impl Languages {
@@ -14,36 +14,43 @@ impl Languages {
         match input.trim() {
             "1" => {
                 println!("You'll be greeted in English!");
-                Languages::English("Hello,")
+                Languages::English(String::from("Hello,"))
             },
             "2" => {
                 println!("Je zal begroet worden in Nederlands!");
-                Languages::Dutch("Hallo,")
+                Languages::Dutch(String::from("Hallo,"))
             },
             "3" => {
                 println!("日本語でご挨拶させていただきます。");
-                Languages::Japanese("こんにちは、")
+                Languages::Japanese(String::from("こんにちは、"))
             },
             "4" => {
                 println!("Serás recibido en español.");
-                Languages::Spanish("Hola,")
+                Languages::Spanish(String::from("Hola,"))
             },
             _ => {
                 println!("Unknown language. Defaulting to English.");
-                Languages::Unknown("Hello,")
+                Languages::Unknown(String::from("Hello,"))
             },
         }
     }
 }
 
 fn get_users_name(language: Languages) {
-    println!("Please enter your name!");
+    match language {
+        Languages::English(_) => println!("Please enter your name!"),
+        Languages::Dutch(_) => println!("Vul alsjeblieft je naam in!"),
+        Languages::Japanese(_) => println!("名前を書いてください!"),
+        Languages::Spanish(_) => println!("¡Por favor escriba su nombre!"),
+        Languages::Unknown(_) => println!("Please enter your name!"),
+    }
+    
     let mut input = String::new();
     io::stdin().read_line(&mut input).expect("Something went wrong trying to capture your input.");
 
     let greeting = match language {
         Languages::English(s) | Languages::Dutch(s) | Languages::Japanese(s) | Languages::Spanish(s) => s,
-        Languages::Unknown(_) => "Hello,",
+        Languages::Unknown(_) => String::from("Hello,"),
     };
     println!("{} {}", greeting, input);
 }
