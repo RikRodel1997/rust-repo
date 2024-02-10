@@ -14,7 +14,7 @@ impl Languages {
         match input.trim() {
             "1" => {
                 println!("You'll be greeted in English!");
-                Languages::English("Hello, ")
+                Languages::English("Hello,")
             },
             "2" => {
                 println!("Je zal begroet worden in Nederlands!");
