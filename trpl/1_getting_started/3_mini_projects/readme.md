@@ -13,10 +13,11 @@ Functional Requirements:
 ## 2 - To-Do List Manager:
 Description: Develop a basic to-do list manager that allows users to add, view, and mark tasks as completed.
 Functional Requirements:
-    * Users can add tasks to the list.
-    * Display the current list of tasks.
-    * Mark tasks as completed.
-    * Handle invalid input gracefully (e.g., if the user enters an invalid task number).
+
+* Users can add tasks to the list.
+* Display the current list of tasks.
+* Mark tasks as completed.
+* Handle invalid input gracefully (e.g., if the user enters an invalid task number).
 
 ## 3 - URL Shortener
 Functional Requirements:
