@@ -4,10 +4,11 @@ After having completed section `I Getting Started` in the book 'The Rust Program
 ## 1 - Hello, [name]
 Description: Create a simple command-line tool that greets the user with a personalized message.
 Functional Requirements:
-    * The user should be able to choose one of 4 languages.
-    * The user should be able to input their name.
-    * The program should respond with a friendly greeting like “Hello, [user’s name]!”.
-    * Handle cases where the user doesn’t provide a name or provides an empty name.
+
+* The user should be able to choose one of 4 languages.
+* The user should be able to input their name.
+* The program should respond with a friendly greeting like “Hello, [user’s name]!”.
+* Handle cases where the user doesn’t provide a name or provides an empty name.
 
 ## 2 - To-Do List Manager:
 Description: Develop a basic to-do list manager that allows users to add, view, and mark tasks as completed.
