@@ -59,12 +59,12 @@ fn main() {
     let mut language_choice = String::new();
     println!("Which language would you like to be greeted in?");
     println!("1. English\n2. Nederlands\n3. 日本語\n4. Español");
-    match io::stdin().read_line(&mut language_choice) {
-        Ok(_) => {
-            let chosen_language = Languages::greetings_from_input(&language_choice);
-            get_users_name(chosen_language);
 
-        },
-        Err(e) => println!("Sorry something went wrong when you choose your language. {}", e)
+    if let Err(e) = io::stdin().read_line(&mut language_choice) {
+        println!("Sorry something went wrong when you choose your language. {}", e);
+        return
     }
+
+    let chosen_language = Languages::greetings_from_input(&language_choice);
+    get_users_name(chosen_language);
 }
