@@ -1,6 +1,6 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ToDo {
-    pub id: String,
+    pub id: i32,
     pub message: String,
     pub active: bool,
 }
