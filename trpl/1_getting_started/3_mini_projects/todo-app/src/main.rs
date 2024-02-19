@@ -1,6 +1,6 @@
 mod structs;
 
-use std::{clone, io};
+use std::io;
 use uuid::Uuid;
 use structs::ToDo;
 
@@ -24,21 +24,6 @@ fn main() {
         }
     }
     menu(todo_list);
-}
-
-
-fn generate_testdata(mut todo_list: Vec<ToDo>) -> Vec<ToDo> {
-    println!("Generating the best testdata you've ever seen...");
-    for i in 0..10 {
-        let my_uuid: String = Uuid::new_v4().to_string();
-        let new_todo = ToDo {
-            id: i + 1,
-            message: format!("This is a ToDo item {}", &my_uuid[28..]),
-            active: true
-        };
-        todo_list.push(new_todo);
-    }
-    todo_list
 }
 
 
@@ -143,4 +128,19 @@ fn finish_todo_item(todo_list: &mut Vec<ToDo>) -> Vec<ToDo> {
 
 fn clear_terminal() {
     print!("{}[2J", 27 as char);
+}
+
+
+fn generate_testdata(mut todo_list: Vec<ToDo>) -> Vec<ToDo> {
+    println!("Generating the best testdata you've ever seen...");
+    for i in 0..10 {
+        let my_uuid: String = Uuid::new_v4().to_string();
+        let new_todo = ToDo {
+            id: i + 1,
+            message: format!("This is a ToDo item {}", &my_uuid[28..]),
+            active: true
+        };
+        todo_list.push(new_todo);
+    }
+    todo_list
 }
