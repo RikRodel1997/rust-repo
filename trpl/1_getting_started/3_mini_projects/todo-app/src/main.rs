@@ -1,6 +1,6 @@
 mod structs;
 
-use std::io;
+use std::{clone, io};
 use uuid::Uuid;
 use structs::ToDo;
 
@@ -42,7 +42,7 @@ fn generate_testdata(mut todo_list: Vec<ToDo>) -> Vec<ToDo> {
 }
 
 
-fn menu(todo_list: Vec<ToDo>) {
+fn menu(mut todo_list: Vec<ToDo>) {
     let mut menu_choice: String = String::new();
     println!("What would you like to do next?");
     println!(" 1. View Active ToDo Items.\n 2. View Finished ToDo Items.\n 3. Add a New ToDO Item.\n 4. Finish a ToDo item.");
@@ -58,7 +58,9 @@ fn menu(todo_list: Vec<ToDo>) {
             add_new_todo_item(todo_list);
         },
         "4" => {
-            finish_todo_item(todo_list);
+            let mut cloned_todo = todo_list.clone();
+            todo_list = finish_todo_item(&mut cloned_todo);
+            menu(todo_list);
         },
         _ => {
             println!("Invalid input. Try again");
@@ -104,10 +106,10 @@ fn add_new_todo_item(mut todo_list: Vec<ToDo>) {
     let mut user_message: String = String::new();
     println!("What message do you want to put on your ToDo?");
     io::stdin().read_line(&mut user_message).expect("Couldn't determine your ToDo message.");
-    let last_todo = todo_list.last();
+    let last_todo = todo_list.last().unwrap();
     let new_todo = ToDo {
         id: last_todo.id + 1,
-        message: String::from(user_message),
+        message: String::from(user_message.trim()),
         active: true,
     };
     todo_list.push(new_todo);
@@ -115,10 +117,27 @@ fn add_new_todo_item(mut todo_list: Vec<ToDo>) {
 }
 
 
-fn finish_todo_item(mut todo_list: Vec<ToDo>) {
-    println!("Which ToDo did you finish?");
-    display_todo_items(&todo_list, "active");
-    
+fn finish_todo_item(todo_list: &mut Vec<ToDo>) -> Vec<ToDo> {
+    let mut input = String::new();
+    println!("\nWhich ToDo did you finish? Type the number associated to the ToDo item.\n");
+    for (n, todo) in todo_list.iter().enumerate() {
+        let formatted_id = format!("{:2}", n + 1);
+        if todo.active {
+            println!("{} | {} {}", formatted_id, todo.message, todo.active);
+        }
+    } 
+
+    io::stdin().read_line(&mut input).expect("Couldn't get your input.");
+    let user_chosen_id: i32 = input.trim().parse().unwrap();
+
+
+    for todo in todo_list.iter_mut() {
+        if todo.active && todo.id == user_chosen_id{
+            todo.active = false;
+            println!("Set ToDo #{} to finished.", todo.id);
+        }
+    } 
+    todo_list.to_vec()
 }
 
 
