@@ -1,5 +1,5 @@
 pub struct Url {
-    id: String,
-    original_url: String,
-    shortened_url: String
+    pub id: i32,
+    pub original_url: String,
+    pub short_code: String
 }
