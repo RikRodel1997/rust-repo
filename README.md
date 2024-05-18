@@ -9,3 +9,6 @@ Updating Rust:
 ```
 rustup update
 ```
+
+Online Rust Books:
+- https://rust-exercises.com/
