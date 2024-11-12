@@ -1,6 +1,6 @@
 DON'T EDIT THIS FILE!
 
-traits5
+iterators2
 
 intro1
 intro2
@@ -64,3 +64,12 @@ traits1
 traits2
 traits3
 traits4
+traits5
+quiz3
+lifetimes1
+lifetimes2
+lifetimes3
+tests1
+tests2
+tests3
+iterators1
