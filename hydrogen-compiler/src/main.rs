@@ -20,14 +20,18 @@ fn main() {
         fs::read_to_string(file_path).expect(&format!("Was unable to read file {file_path}"));
 
     let tokens = tokens::tokenize(data);
+    if debug {
+        tokens::debug_tokens(&tokens);
+    }
+
     let ast = parser::parse(&mut tokens.iter().peekable());
     if debug {
-        parser::print_ast(&ast);
+        parser::debug_ast(&ast);
     }
 
     let asm = asm::generate(ast);
     if debug {
-        asm::print_asm(&asm);
+        asm::debug_asm(&asm);
     }
 
     match asm::write_asm(asm) {

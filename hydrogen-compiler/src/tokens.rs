@@ -1,24 +1,30 @@
 use std::{iter::Peekable, str::Chars};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub value: Option<TokenValue>,
     pub lit: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Keyword(Keywords),
     Builtin(Builtins),
-    Identifier,
+    Identifier(IdentifierKinds),
     Value,
     Symbol(Symbols),
+    Unknown,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Keywords {
-    Return,
+    Let,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum IdentifierKinds {
+    Variable,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -26,9 +32,11 @@ pub enum Builtins {
     Exit,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Symbols {
     Semicolon,
+    OpenParen,
+    CloseParen,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -39,7 +47,7 @@ pub enum TokenValue {
 }
 
 pub fn tokenize(data: String) -> Vec<Token> {
-    let symbols = vec![';'];
+    let symbols = vec![';', '(', ')'];
     let mut tokens: Vec<Token> = Vec::new();
     let mut buf: String = String::new();
     let mut chars = data.chars().peekable();
@@ -65,6 +73,12 @@ pub fn tokenize(data: String) -> Vec<Token> {
     tokens
 }
 
+pub fn debug_tokens(tokens: &Vec<Token>) {
+    for token in tokens {
+        println!("TOKEN DEBUG: {:?}", token);
+    }
+}
+
 fn alphabetic(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Token {
     while let Some(ch) = chars.peek() {
         if ch.is_alphanumeric() {
@@ -81,8 +95,13 @@ fn alphabetic(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Token {
             value: None,
             lit: "exit".to_string(),
         },
+        "let" => Token {
+            kind: TokenKind::Keyword(Keywords::Let),
+            value: None,
+            lit: "let".to_string(),
+        },
         _ => Token {
-            kind: TokenKind::Identifier,
+            kind: TokenKind::Identifier(IdentifierKinds::Variable),
             value: None,
             lit: buf.to_string(),
         },
@@ -94,7 +113,7 @@ fn numeric(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Token {
         if ch.is_numeric() {
             buf.push(*ch);
             chars.next();
-        } else if ch == &'.' {
+        } else if *ch == '.' {
             buf.push(*ch);
             chars.next();
         } else {
@@ -120,12 +139,36 @@ fn numeric(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Token {
     }
 }
 
-fn symbol(_symbols: &Vec<char>, _chars: &mut Peekable<Chars<'_>>) -> Token {
-    Token {
-        kind: TokenKind::Symbol(Symbols::Semicolon),
+fn symbol(symbols: &Vec<char>, chars: &mut Peekable<Chars<'_>>) -> Token {
+    let token = Token {
+        kind: TokenKind::Unknown,
         value: None,
-        lit: ";".to_string(),
+        lit: "".to_string(),
+    };
+    while let Some(ch) = chars.peek() {
+        if *ch == '(' {
+            return Token {
+                kind: TokenKind::Symbol(Symbols::OpenParen),
+                value: None,
+                lit: "(".to_string(),
+            };
+        } else if *ch == ')' {
+            return Token {
+                kind: TokenKind::Symbol(Symbols::CloseParen),
+                value: None,
+                lit: ")".to_string(),
+            };
+        } else if *ch == ';' {
+            return Token {
+                kind: TokenKind::Symbol(Symbols::Semicolon),
+                value: None,
+                lit: ";".to_string(),
+            };
+        } else {
+            break;
+        }
     }
+    token
 }
 
 #[cfg(test)]
@@ -134,23 +177,36 @@ mod tests {
 
     #[test]
     fn tokenizes_one_of_each_type() {
-        let data = String::from("exit 20 ;");
+        let data = String::from("exit(20);");
         let tokens = tokenize(data);
-        assert_eq!(tokens.len(), 3);
-
-        let exit_record = tokens.get(0).unwrap();
-        assert_eq!(exit_record.kind, TokenKind::Builtin(Builtins::Exit));
-        assert_eq!(exit_record.value, None);
-        assert_eq!(exit_record.lit, "exit".to_string());
-
-        let twenty_record = tokens.get(1).unwrap();
-        assert_eq!(twenty_record.kind, TokenKind::Value);
-        assert_eq!(twenty_record.value, Some(TokenValue::Integer(20)));
-        assert_eq!(twenty_record.lit, "20".to_string());
-
-        let semi_record = tokens.get(2).unwrap();
-        assert_eq!(semi_record.kind, TokenKind::Symbol(Symbols::Semicolon));
-        assert_eq!(semi_record.value, None);
-        assert_eq!(semi_record.lit, ";".to_string());
+        let expected = vec![
+            Token {
+                kind: TokenKind::Builtin(Builtins::Exit),
+                value: None,
+                lit: "exit".to_string(),
+            },
+            Token {
+                kind: TokenKind::Symbol(Symbols::OpenParen),
+                value: None,
+                lit: "(".to_string(),
+            },
+            Token {
+                kind: TokenKind::Value,
+                value: Some(TokenValue::Integer(20)),
+                lit: "20".to_string(),
+            },
+            Token {
+                kind: TokenKind::Symbol(Symbols::CloseParen),
+                value: None,
+                lit: ")".to_string(),
+            },
+            Token {
+                kind: TokenKind::Symbol(Symbols::Semicolon),
+                value: None,
+                lit: ";".to_string(),
+            },
+        ];
+        assert_eq!(tokens.len(), 5);
+        assert_eq!(tokens, expected);
     }
 }
