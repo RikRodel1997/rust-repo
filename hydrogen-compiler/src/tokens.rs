@@ -1,9 +1,11 @@
 use std::{iter::Peekable, str::Chars};
 
+const KEYWORDS: [&str; 1] = ["let"];
+const BUILTINS: [&str; 1] = ["exit"];
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub kind: TokenKind,
-    pub value: Option<TokenValue>,
     pub lit: String,
 }
 
@@ -12,7 +14,7 @@ pub enum TokenKind {
     Keyword(Keywords),
     Builtin(Builtins),
     Identifier(IdentifierKinds),
-    Value,
+    Value(TokenValue),
     Symbol(Symbols),
     Unknown,
 }
@@ -37,17 +39,18 @@ pub enum Symbols {
     Semicolon,
     OpenParen,
     CloseParen,
+    Equal,
+    EqualEqual,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenValue {
-    String(String),
     Integer(i64),
     Float(f64),
 }
 
 pub fn tokenize(data: String) -> Vec<Token> {
-    let symbols = vec![';', '(', ')'];
+    let single_char = vec![';', '(', ')', '='];
     let mut tokens: Vec<Token> = Vec::new();
     let mut buf: String = String::new();
     let mut chars = data.chars().peekable();
@@ -64,19 +67,13 @@ pub fn tokenize(data: String) -> Vec<Token> {
         } else if char.is_numeric() {
             tokens.push(numeric(&mut buf, &mut chars));
             buf.clear();
-        } else if symbols.contains(char) {
-            tokens.push(symbol(&symbols, &mut chars));
+        } else if single_char.contains(char) {
+            tokens.push(symbol(&mut chars));
             chars.next();
         }
     }
 
     tokens
-}
-
-pub fn debug_tokens(tokens: &Vec<Token>) {
-    for token in tokens {
-        println!("TOKEN DEBUG: {:?}", token);
-    }
 }
 
 fn alphabetic(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Token {
@@ -89,22 +86,49 @@ fn alphabetic(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Token {
         }
     }
 
-    match buf.as_str() {
+    if BUILTINS.contains(&buf.as_str()) {
+        return builtin_token(buf);
+    } else if KEYWORDS.contains(&buf.as_str()) {
+        return keyword_token(buf);
+    } else {
+        return Token {
+            kind: TokenKind::Identifier(IdentifierKinds::Variable),
+            lit: buf.to_string(),
+        };
+    };
+}
+
+fn builtin_token(buf: &str) -> Token {
+    match buf {
         "exit" => Token {
             kind: TokenKind::Builtin(Builtins::Exit),
-            value: None,
             lit: "exit".to_string(),
         },
+        _ => {
+            eprintln!("Received unexpected builtin {buf}");
+            Token {
+                kind: TokenKind::Unknown,
+                lit: "unknown".to_string(),
+            }
+        }
+    }
+}
+
+fn keyword_token(buf: &str) -> Token {
+    match buf {
         "let" => Token {
             kind: TokenKind::Keyword(Keywords::Let),
-            value: None,
+
             lit: "let".to_string(),
         },
-        _ => Token {
-            kind: TokenKind::Identifier(IdentifierKinds::Variable),
-            value: None,
-            lit: buf.to_string(),
-        },
+        _ => {
+            eprintln!("Received unexpected keyword {buf}");
+            Token {
+                kind: TokenKind::Unknown,
+
+                lit: "unknown".to_string(),
+            }
+        }
     }
 }
 
@@ -133,42 +157,74 @@ fn numeric(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Token {
     };
 
     Token {
-        kind: TokenKind::Value,
-        value,
+        kind: TokenKind::Value(value.expect("value is None")),
         lit: buf.to_string(),
     }
 }
 
-fn symbol(symbols: &Vec<char>, chars: &mut Peekable<Chars<'_>>) -> Token {
+fn symbol(chars: &mut Peekable<Chars<'_>>) -> Token {
     let token = Token {
         kind: TokenKind::Unknown,
-        value: None,
+
         lit: "".to_string(),
     };
     while let Some(ch) = chars.peek() {
         if *ch == '(' {
             return Token {
                 kind: TokenKind::Symbol(Symbols::OpenParen),
-                value: None,
+
                 lit: "(".to_string(),
             };
         } else if *ch == ')' {
             return Token {
                 kind: TokenKind::Symbol(Symbols::CloseParen),
-                value: None,
+
                 lit: ")".to_string(),
             };
         } else if *ch == ';' {
             return Token {
                 kind: TokenKind::Symbol(Symbols::Semicolon),
-                value: None,
+
                 lit: ";".to_string(),
             };
+        } else if *ch == '=' {
+            chars.next(); // We know its an equals now
+            let next_char = chars.peek();
+            return is_one_or_two_char('=', next_char);
         } else {
             break;
         }
     }
     token
+}
+
+fn is_one_or_two_char(ch: char, next_char: Option<&char>) -> Token {
+    match next_char {
+        Some('=') => {
+            return Token {
+                kind: TokenKind::Symbol(Symbols::EqualEqual),
+
+                lit: "==".to_string(),
+            };
+        }
+        Some(' ') => {
+            if ch == '=' {
+                return Token {
+                    kind: TokenKind::Symbol(Symbols::Equal),
+
+                    lit: "=".to_string(),
+                };
+            } else {
+                panic!("{ch} is not a valid char for is_one_or_two_char");
+            }
+        }
+        None => {
+            panic!("Unexpected end of input after '='");
+        }
+        _ => {
+            panic!("Unable to determine next token after '='");
+        }
+    };
 }
 
 #[cfg(test)]
@@ -177,36 +233,57 @@ mod tests {
 
     #[test]
     fn tokenizes_one_of_each_type() {
-        let data = String::from("exit(20);");
+        let data = String::from("let test = 4.0 exit(20); ==");
         let tokens = tokenize(data);
         let expected = vec![
             Token {
+                kind: TokenKind::Keyword(Keywords::Let),
+                lit: "let".to_string(),
+            },
+            Token {
+                kind: TokenKind::Identifier(IdentifierKinds::Variable),
+                lit: "test".to_string(),
+            },
+            Token {
+                kind: TokenKind::Symbol(Symbols::Equal),
+                lit: "=".to_string(),
+            },
+            Token {
+                kind: TokenKind::Value(TokenValue::Float(4.0)),
+                lit: "4.0".to_string(),
+            },
+            Token {
                 kind: TokenKind::Builtin(Builtins::Exit),
-                value: None,
                 lit: "exit".to_string(),
             },
             Token {
                 kind: TokenKind::Symbol(Symbols::OpenParen),
-                value: None,
                 lit: "(".to_string(),
             },
             Token {
-                kind: TokenKind::Value,
-                value: Some(TokenValue::Integer(20)),
+                kind: TokenKind::Value(TokenValue::Integer(20)),
                 lit: "20".to_string(),
             },
             Token {
                 kind: TokenKind::Symbol(Symbols::CloseParen),
-                value: None,
                 lit: ")".to_string(),
             },
             Token {
                 kind: TokenKind::Symbol(Symbols::Semicolon),
-                value: None,
                 lit: ";".to_string(),
             },
+            Token {
+                kind: TokenKind::Symbol(Symbols::EqualEqual),
+                lit: "==".to_string(),
+            },
         ];
-        assert_eq!(tokens.len(), 5);
+        assert_eq!(tokens.len(), 10);
         assert_eq!(tokens, expected);
+    }
+}
+
+pub fn debug_tokens(tokens: &Vec<Token>) {
+    for token in tokens {
+        println!("TOKEN DEBUG: {:?}", token);
     }
 }

@@ -1,16 +1,9 @@
-use crate::tokens::Token;
-
 use super::exprs::NodeExpr;
-
-#[derive(Debug)]
-pub struct NodeStmt {
-    pub stmt: Option<Stmts>,
-}
 
 #[derive(Debug)]
 pub enum Stmts {
     Exit(NodeStmtExit),
-    // Let(NodeStmtLet),
+    Let(NodeStmtLet),
 }
 
 #[derive(Debug)]
@@ -20,6 +13,6 @@ pub struct NodeStmtExit {
 
 #[derive(Debug)]
 pub struct NodeStmtLet {
-    pub token: Token,
+    pub ident: String,
     pub expr: Option<NodeExpr>,
 }

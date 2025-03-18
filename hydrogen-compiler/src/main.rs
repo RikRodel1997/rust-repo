@@ -5,9 +5,40 @@ mod tokens;
 
 use args::{ArgType, Args};
 
-use std::fs;
+use std::{collections::HashMap, fs};
+
+pub struct Program {
+    pub stack_size: i32,
+    pub output: String,
+    pub vars: HashMap<String, Var>,
+}
+
+impl Program {
+    fn new() -> Self {
+        Self {
+            stack_size: 0,
+            output: String::new(),
+            vars: HashMap::new(),
+        }
+    }
+
+    fn push(&mut self, register: &str) {
+        let _ = &self.stack_size + 1;
+        let _ = &self.output.push_str(&format!("    push {register}\n"));
+    }
+
+    fn pop(&mut self, register: &str) {
+        let _ = &self.stack_size - 1;
+        let _ = &self.output.push_str(&format!("    pop {register}\n"));
+    }
+}
+
+pub struct Var {
+    pub stack_pos: i32,
+}
 
 fn main() {
+    // let prog = Program::new();
     let args: Vec<Args> = Args::new();
     let file_arg = args.iter().find(|arg| arg.arg_type == ArgType::File);
     let file_path = file_arg.unwrap().arg_value.as_ref().unwrap();

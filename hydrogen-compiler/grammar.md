@@ -4,7 +4,7 @@ $$
     \\
     [\text{stmt}] &\to
     \begin{cases}
-        exit(\text{expr});
+        exit([\text{expr}]);
         \\
         let\space\text{ident} = [\text{expr}]
     \end{cases}

@@ -17,7 +17,7 @@ impl Args {
         let mut result = Vec::new();
         let args: Vec<String> = env::args().collect();
         if args.len() < 2 {
-            eprintln!("You should provide a file as input");
+            panic!("You should provide a file as input");
         }
 
         for arg in args.iter() {
