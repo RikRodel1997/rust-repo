@@ -24,18 +24,18 @@ fn main() {
         tokens::debug_tokens(&tokens);
     }
 
-    let ast = parser::parse(&mut tokens.iter().peekable());
-    if debug {
-        parser::debug_ast(&ast);
-    }
+    // let ast = parser::parse(&mut tokens.iter().peekable());
+    // if debug {
+    //     parser::debug_ast(&ast);
+    // }
 
-    let program = asm::generate(ast);
-    if debug {
-        asm::debug_asm(&program);
-    }
+    // let program = asm::generate(ast);
+    // if debug {
+    //     asm::debug_asm(&program);
+    // }
 
-    match asm::write_asm(program) {
-        Ok(_) => (),
-        Err(e) => eprintln!("ASM generated and written unsuccessfully {e}."),
-    };
+    // match asm::write_asm(program) {
+    //     Ok(_) => (),
+    //     Err(e) => eprintln!("ASM generated and written unsuccessfully {e}."),
+    // };
 }
