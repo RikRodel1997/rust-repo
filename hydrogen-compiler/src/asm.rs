@@ -1,10 +1,39 @@
-use std::{fs::File, io::Write};
+use std::{collections::HashMap, fs::File, io::Write};
 
 use crate::{
-    Program, Var,
-    parser::{Ast, Exprs, NodeExpr, Stmts},
+    parser::{Ast, BinaryKinds, Exprs, NodeExpr, Stmts},
     tokens::{TokenKind, TokenValue},
 };
+
+struct Program {
+    stack_size: i32,
+    output: String,
+    vars: HashMap<String, Var>,
+}
+
+impl Program {
+    fn new() -> Self {
+        Self {
+            stack_size: 0,
+            output: String::new(),
+            vars: HashMap::new(),
+        }
+    }
+
+    fn push(&mut self, register: &str) {
+        let _ = &self.stack_size + 1;
+        let _ = &self.output.push_str(&format!("    push {register}\n"));
+    }
+
+    fn pop(&mut self, register: &str) {
+        let _ = &self.stack_size - 1;
+        let _ = &self.output.push_str(&format!("    pop {register}\n"));
+    }
+}
+
+struct Var {
+    stack_pos: i32,
+}
 
 pub fn generate(ast: Ast) -> String {
     let mut prog = Program::new();
@@ -20,18 +49,16 @@ pub fn generate(ast: Ast) -> String {
 fn generate_stmt(stmt: Stmts, prog: &mut Program) {
     match stmt {
         Stmts::Exit(stmt) => match stmt.expr {
-            Some(expr) => {
+            Ok(expr) => {
                 generate_expr(expr, prog);
                 prog.output.push_str("    mov rax, 60\n");
                 prog.pop("rdi");
                 prog.output.push_str("    syscall\n");
             }
-            None => {
-                prog.output.push_str("    mov rax, 60\n    syscall\n");
-            }
+            Err(e) => panic!("{:?}", e),
         },
         Stmts::Let(stmt) => match stmt.expr {
-            Some(expr) => {
+            Ok(expr) => {
                 if prog.vars.contains_key(&stmt.ident) {
                     eprintln!("{} already used.", stmt.ident);
                     panic!();
@@ -44,7 +71,7 @@ fn generate_stmt(stmt: Stmts, prog: &mut Program) {
                 );
                 generate_expr(expr, prog);
             }
-            None => {}
+            Err(e) => panic!("{:?}", e),
         },
     }
 }
@@ -65,7 +92,7 @@ fn generate_expr(expr: NodeExpr, prog: &mut Program) {
             prog.output.push_str(&format!("    mov rax, {value}\n"));
             prog.push("rax");
         }
-        Exprs::Identifier => {
+        Exprs::Ident => {
             if !prog.vars.contains_key(&expr.token.lit) {
                 eprintln!("Undeclared identifier {}", &expr.token.lit);
             }
@@ -73,6 +100,14 @@ fn generate_expr(expr: NodeExpr, prog: &mut Program) {
             let asm = format!("QWORD [rsp + {}]", prog.stack_size - var.stack_pos);
             prog.push(&asm);
         }
+        Exprs::Binary(kind) => match kind {
+            BinaryKinds::Addition => {
+                todo!()
+            }
+            BinaryKinds::Multiplication => {
+                todo!()
+            }
+        },
     }
 }
 

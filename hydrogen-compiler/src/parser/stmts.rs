@@ -1,4 +1,4 @@
-use super::exprs::NodeExpr;
+use super::{ParseError, exprs::NodeExpr};
 
 #[derive(Debug)]
 pub enum Stmts {
@@ -8,11 +8,11 @@ pub enum Stmts {
 
 #[derive(Debug)]
 pub struct NodeStmtExit {
-    pub expr: Option<NodeExpr>,
+    pub expr: Result<NodeExpr, ParseError>,
 }
 
 #[derive(Debug)]
 pub struct NodeStmtLet {
     pub ident: String,
-    pub expr: Option<NodeExpr>,
+    pub expr: Result<NodeExpr, ParseError>,
 }

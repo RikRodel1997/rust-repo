@@ -1,5 +1,4 @@
 
-# Define the function
 assert_eq() {
     local actual=$1
     local expected=$2
@@ -18,8 +17,8 @@ idx=0
 cargo build
 
 for file in hy-files/*; do
-    ./target/debug/hydrogen-compiler $file && ./asm.bash > /dev/null 2>&1
-    asm_output=$(./asm.bash)
+    ./target/debug/hydrogen-compiler debug $file && ./asm.sh > /dev/null 2>&1
+    asm_output=$(./asm.sh)
     assert_eq $asm_output "${expected[$index]}" $file
     index=$((index + 1))
 done

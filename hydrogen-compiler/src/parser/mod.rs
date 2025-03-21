@@ -4,7 +4,7 @@ mod stmts;
 use core::panic;
 use std::{fmt, iter::Peekable, slice::Iter};
 
-use crate::tokens::{Builtins, IdentifierKinds, Keywords, Symbols, Token, TokenKind};
+use crate::tokens::{Builtins, IdentKinds, Keywords, Symbols, Token, TokenKind, TokenValue};
 pub use exprs::*;
 pub use stmts::*;
 
@@ -74,7 +74,7 @@ fn parse_stmt(tk: &Token, tokens: &mut Peekable<Iter<'_, Token>>) -> Option<Stmt
             Keywords::Let => match tokens.next() {
                 Some(_) => {
                     let next = tokens.next().unwrap();
-                    if next.kind != TokenKind::Identifier(IdentifierKinds::Variable) {
+                    if next.kind != TokenKind::Ident(IdentKinds::Variable) {
                         panic!("NO IDENTIFIER AFTER LET STATEMENT");
                     }
                     tokens.next();
@@ -99,34 +99,75 @@ fn parse_stmt(tk: &Token, tokens: &mut Peekable<Iter<'_, Token>>) -> Option<Stmt
     };
 }
 
-fn parse_expr(tokens: &mut Peekable<Iter<'_, Token>>) -> Option<NodeExpr> {
+fn parse_expr(tokens: &mut Peekable<Iter<'_, Token>>) -> Result<Exprs, ParseError> {
     let next_token = tokens.next().unwrap();
     match &next_token.kind {
-        TokenKind::Value(_) => Some(NodeExpr {
-            kind: Exprs::Literal,
-            token: next_token.clone(),
-        }),
+        TokenKind::Value(val) => match tokens.next() {
+            Some(tk) => match &tk.kind {
+                TokenKind::Symbol(symbol) => match symbol {
+                    Symbols::Semicolon => Ok(NodeExpr {
+                        kind: Exprs::Literal,
+                        token: next_token.clone(),
+                    }),
+                    Symbols::Plus => parse_binary_expr(val, BinaryKinds::Addition, tokens),
+                    Symbols::Star => parse_binary_expr(val, BinaryKinds::Multiplication, tokens),
+                    _ => Err(ParseError {
+                        message: format!(
+                            "Unexpected symbol {:?}.\nRemaining tokens {:?}",
+                            symbol, tokens
+                        ),
+                    }),
+                },
+                TokenKind::Value(_) => Ok(NodeExpr {
+                    kind: Exprs::Literal,
+                    token: next_token.clone(),
+                }),
+                _ => Err(ParseError {
+                    message: format!("Unexpected token {:?}.", tk),
+                }),
+            },
+            None => Err(ParseError {
+                message: format!("Unexpected end of input.\nRemaining tokens {:?}", tokens),
+            }),
+        },
+
         TokenKind::Symbol(symbol) => match symbol {
-            Symbols::Equal => Some(NodeExpr {
+            Symbols::Equal => Ok(NodeExpr {
                 kind: Exprs::Literal,
                 token: next_token.clone(),
             }),
-            _ => {
-                eprintln!("Remaining tokens {:?}", tokens);
-                panic!("Don't know what to do with symbol {:?}", symbol);
-            }
+            _ => Err(ParseError {
+                message: format!("Invalid symbol {:?}\nRemaining tokens {:?}", symbol, tokens),
+            }),
         },
-        TokenKind::Identifier(ident) => match ident {
-            IdentifierKinds::Variable => Some(NodeExpr {
-                kind: Exprs::Identifier,
+        TokenKind::Ident(ident) => match ident {
+            IdentKinds::Variable => Ok(NodeExpr {
+                kind: Exprs::Ident,
                 token: next_token.clone(),
             }),
         },
-        _ => {
-            eprintln!("Remaining tokens {:?}", tokens);
-            panic!("Don't know what to do with next_token {:?}", next_token);
-        }
+        _ => Err(ParseError {
+            message: format!(
+                "Unexpected token {:?}\nRemaining tokens {:?}",
+                next_token, tokens
+            ),
+        }),
     }
+}
+
+fn parse_binary_expr(
+    lhs: &TokenValue,
+    operator: BinaryKinds,
+    tokens: &mut Peekable<Iter<'_, Token>>,
+) -> Result<NodeExpr, ParseError> {
+    println!("tokens: {:?}", tokens);
+    println!("lhs: {:?}", lhs);
+    parse_expr(tokens).unwrap();
+
+    Ok(NodeExpr {
+        kind: Exprs::Binary(operator),
+        token: tokens.next().unwrap().clone(),
+    })
 }
 
 fn ends_with_semicolon(tokens: &mut Peekable<Iter<'_, Token>>) -> Result<bool, ParseError> {
@@ -134,17 +175,16 @@ fn ends_with_semicolon(tokens: &mut Peekable<Iter<'_, Token>>) -> Result<bool, P
         Some(tk) => {
             if tk.kind != TokenKind::Symbol(Symbols::Semicolon) {
                 return Err(ParseError {
-                    message: "ParserError, no semicolon found".to_string(),
+                    message: "No semicolon found".to_string(),
                 });
             }
         }
         None => {
             return Err(ParseError {
-                message: "ParserError, no semicolon found".to_string(),
+                message: "No semicolon found".to_string(),
             });
         }
     }
-
     Ok(true)
 }
 
