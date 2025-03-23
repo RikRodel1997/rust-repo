@@ -53,7 +53,6 @@ pub enum TokenValue {
 pub fn tokenize(data: String) -> Vec<Token> {
     let single_char = vec![';', '(', ')', '=', '+', '*'];
     let mut tokens: Vec<Result<Token, TokenizeError>> = Vec::new();
-    let mut buf: String = String::new();
     let mut chars = data.chars().peekable();
 
     while let Some(ch) = chars.peek() {
@@ -63,11 +62,9 @@ pub fn tokenize(data: String) -> Vec<Token> {
         }
 
         if ch.is_alphabetic() {
-            tokens.push(alphabetic(&mut buf, &mut chars));
-            buf.clear();
+            tokens.push(alphabetic(&mut chars));
         } else if ch.is_numeric() {
-            tokens.push(numeric(&mut buf, &mut chars));
-            buf.clear();
+            tokens.push(numeric(&mut chars));
         } else if single_char.contains(ch) {
             tokens.push(symbol(&mut chars));
             chars.next();
@@ -85,7 +82,8 @@ pub fn tokenize(data: String) -> Vec<Token> {
     }
 }
 
-fn alphabetic(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Result<Token, TokenizeError> {
+fn alphabetic(chars: &mut Peekable<Chars<'_>>) -> Result<Token, TokenizeError> {
+    let mut buf = String::new();
     while let Some(ch) = chars.peek() {
         if ch.is_alphanumeric() {
             buf.push(*ch);
@@ -96,9 +94,9 @@ fn alphabetic(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Result<Token
     }
 
     if BUILTINS.contains(&buf.as_str()) {
-        return builtin_token(buf);
+        return builtin_token(&buf);
     } else if KEYWORDS.contains(&buf.as_str()) {
-        return keyword_token(buf);
+        return keyword_token(&buf);
     } else {
         return Ok(Token {
             kind: TokenKind::Ident(IdentKinds::Variable),
@@ -114,7 +112,7 @@ fn builtin_token(buf: &str) -> Result<Token, TokenizeError> {
             lit: "exit".to_string(),
         }),
         _ => Err(TokenizeError {
-            message: format!("unexpected builtin: {buf}"),
+            message: format!("Unexpected builtin: {buf}"),
         }),
     }
 }
@@ -126,12 +124,13 @@ fn keyword_token(buf: &str) -> Result<Token, TokenizeError> {
             lit: "let".to_string(),
         }),
         _ => Err(TokenizeError {
-            message: format!("unexpected keyword: {buf}"),
+            message: format!("Unexpected keyword: {buf}"),
         }),
     }
 }
 
-fn numeric(buf: &mut String, chars: &mut Peekable<Chars<'_>>) -> Result<Token, TokenizeError> {
+fn numeric(chars: &mut Peekable<Chars<'_>>) -> Result<Token, TokenizeError> {
+    let mut buf = String::new();
     while let Some(ch) = chars.peek() {
         if ch.is_numeric() {
             buf.push(*ch);

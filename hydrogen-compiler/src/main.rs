@@ -1,9 +1,13 @@
 mod args;
 mod asm;
+mod parser;
 mod tokens;
 
 use args::{ArgType, Args};
+use asm::Program;
+use parser::Parser;
 
+use core::panic;
 use std::{env, fs};
 
 fn main() {
@@ -24,18 +28,21 @@ fn main() {
         tokens::debug_tokens(&tokens);
     }
 
-    // let ast = parser::parse(&mut tokens.iter().peekable());
-    // if debug {
-    //     parser::debug_ast(&ast);
-    // }
+    let mut parser = Parser::new(tokens, debug);
+    let ast = parser.parse();
 
-    // let program = asm::generate(ast);
-    // if debug {
-    //     asm::debug_asm(&program);
-    // }
-
-    // match asm::write_asm(program) {
-    //     Ok(_) => (),
-    //     Err(e) => eprintln!("ASM generated and written unsuccessfully {e}."),
-    // };
+    match ast {
+        Ok(stmts) => {
+            let mut program = Program::new(&stmts, "out.asm", debug);
+            program.generate();
+            match program.write() {
+                Ok(_) => (),
+                Err(e) => eprintln!("ASM generated and written unsuccessfully {e}."),
+            };
+        }
+        Err(e) => {
+            eprintln!("ParserError: {:?}", e);
+            panic!();
+        }
+    }
 }

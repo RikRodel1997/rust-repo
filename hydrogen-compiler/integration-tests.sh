@@ -11,13 +11,13 @@ assert_eq() {
     fi
 }
 
-expected=( 10 5 )
+expected=( 8 10 5 )
 idx=0
 
 cargo build
 
 for file in hy-files/*; do
-    ./target/debug/hydrogen-compiler debug $file && ./asm.sh > /dev/null 2>&1
+    ./target/debug/hydrogen-compiler $file && ./asm.sh > /dev/null 2>&1
     asm_output=$(./asm.sh)
     assert_eq $asm_output "${expected[$index]}" $file
     index=$((index + 1))
