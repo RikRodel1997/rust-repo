@@ -1,8 +1,9 @@
 mod float;
+mod tokenize;
 
 fn main() {
     let input = float::FloatStruct::new(0.0);
-    println!("result is {}", input.result);
+    assert_eq!(input.result, 0.0);
 }
 
 #[cfg(test)]

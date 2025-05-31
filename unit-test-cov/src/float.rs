@@ -14,10 +14,11 @@ impl FloatStruct {
 
     fn match_input(input: f64) -> f64 {
         match input {
-            0.0 => input * 2.0,
+            0.0 => 0.0,
             1.0 => input * 2.0,
             3.0 => input * 2.0,
             6.0 => input * 2.0,
+            15.0..=20.0 => input * 3.0,
             _ => input * 1.5,
         }
     }
@@ -33,6 +34,15 @@ mod test {
         for input in inputs.iter() {
             let result = FloatStruct::new(*input);
             assert_eq!(result.result, input * 2.0)
+        }
+    }
+
+    #[test]
+    fn test_input_troubles() {
+        let inputs = vec![15.0, 17.0, 20.0];
+        for input in inputs.iter() {
+            let result = FloatStruct::new(*input);
+            assert_eq!(result.result, input * 3.0)
         }
     }
 
