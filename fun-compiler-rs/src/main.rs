@@ -1,29 +1,23 @@
+mod binding;
 mod environment;
 mod errors;
 mod lexer;
+mod node;
 mod parser;
+mod tokens;
 
 use std::env;
 use std::fs;
 use std::process::exit;
 
-use crate::lexer::lex;
 use crate::parser::parse;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     let file = parse_args(&args);
-    let source = fs::read_to_string(file).expect("Should have been able to read the file");
+    let source = fs::read_to_string(file).expect(&format!("Unable to read file {}", file));
 
-    let tokens = match lex(source.as_str()) {
-        Ok(tokens) => tokens,
-        Err(e) => {
-            println!("Lexer error: {:?}", e);
-            exit(1)
-        }
-    };
-
-    let ast = match parse(tokens) {
+    match parse(source) {
         Ok(ast) => ast,
         Err(e) => {
             println!("Parser error: {:?}", e);

@@ -8,5 +8,20 @@ pub struct Error {
 
 #[derive(Debug, PartialEq)]
 pub enum ErrorKind {
-    Empty,
+    Parser(ParserError),
+    Lexer(LexerError),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum LexerError {
+    EmptyInput,
+    UnexpectedToken,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ParserError {
+    EmptyInput,
+    NoToken,
+    UnexpectedToken,
+    InvalidInteger(String),
 }

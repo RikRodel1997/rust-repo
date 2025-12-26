@@ -1,44 +1,80 @@
-use crate::errors::{Error, ErrorKind};
+use crate::errors::Error;
+use crate::tokens::{Token, TokenKind};
+use std::iter::Peekable;
+use std::str::Chars;
 
-pub const WHITESPACES: [char; 3] = [' ', '\r', '\n'];
-pub const DELIMITERS: [char; 8] = [' ', '\r', '\n', ':', '=', '(', ')', ','];
+const WHITESPACES: [char; 3] = [' ', '\r', '\n'];
+const DELIMITERS: [char; 7] = [':', '=', '(', ')', ',', '{', '}'];
+const KEYWORDS: [&str; 1] = ["defun"];
+const TYPES: [&str; 1] = ["integer"];
 
-pub fn lex(source: &str) -> Result<Vec<&str>, Error> {
-    if source.is_empty() {
-        return Err(Error {
-            kind: ErrorKind::Empty,
-            message: "Can't lex empty input".to_string(),
-        });
-    }
+pub fn lex(
+    source: &mut Peekable<Chars<'_>>,
+    position: &mut usize,
+    line: &mut usize,
+) -> Option<Result<Token, Error>> {
+    let mut literal = String::new();
 
-    let mut tokens: Vec<&str> = Vec::new();
-    let mut s = source;
-
-    while let Some(char) = s.chars().next() {
-        let is_whitespace = WHITESPACES.contains(&char);
-        let is_delimiter = DELIMITERS.contains(&char);
+    while let Some(char) = source.next() {
         let char_size = char.len_utf8();
+        let is_delimiter = DELIMITERS.contains(&char);
+        let is_whitespace = WHITESPACES.contains(&char);
 
         if is_whitespace {
-            s = &s[char_size..];
+            if char == '\n' {
+                *line += 1;
+            }
+            *position += char_size;
             continue;
         }
 
         if is_delimiter {
-            tokens.push(&s[..char_size]);
-            s = &s[char_size..];
-        } else {
-            let end = s
-                .find(|inner_char: char| {
-                    inner_char.is_whitespace() || DELIMITERS.contains(&inner_char)
-                })
-                .unwrap_or(s.len());
-            tokens.push(&s[..end]);
-            s = &s[end..];
+            let delimiter = Some(Ok(Token::new(
+                *position,
+                *position + char_size,
+                *line,
+                char.into(),
+                TokenKind::Delimiter,
+            )));
+            *position += char_size;
+            return delimiter;
         }
-    }
 
-    Ok(tokens)
+        if !is_whitespace && !is_delimiter {
+            if char.is_alphanumeric() {
+                let literal_start = *position;
+                literal.push(char);
+                *position += char_size;
+
+                while let Some(&char) = source.peek() {
+                    if char.is_alphanumeric() {
+                        literal.push(char);
+                        source.next();
+                        *position += char_size;
+                    } else {
+                        break;
+                    }
+                }
+
+                let kind = match literal {
+                    _ if KEYWORDS.contains(&literal.as_str()) => TokenKind::Keyword,
+                    _ if TYPES.contains(&literal.as_str()) => TokenKind::Type,
+                    _ if literal.chars().next().unwrap().is_numeric() => TokenKind::Value,
+                    _ => TokenKind::Identifier,
+                };
+
+                return Some(Ok(Token::new(
+                    literal_start,
+                    *position,
+                    *line,
+                    literal,
+                    kind,
+                )));
+            }
+        }
+        continue;
+    }
+    None
 }
 
 #[cfg(test)]
@@ -46,18 +82,264 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_lex() {
-        let tokens = lex(
-            "a : integer = 0\na := 0\n\nb : integer\nb := 0\n\ndefun foo (a:integer, b:integer):integer {\n\n}",
-        );
+    fn test_whitespaces() {
+        let source = "a:integer\na : integer";
         let expected = vec![
-            "a", ":", "integer", "=", "0", "a", ":", "=", "0", "b", ":", "integer", "b", ":", "=",
-            "0", "defun", "foo", "(", "a", ":", "integer", ",", "b", ":", "integer", ")", ":",
-            "integer", "{", "}",
+            Token {
+                start: 0,
+                end: 1,
+                line: 1,
+                literal: "a".into(),
+                kind: TokenKind::Identifier,
+            },
+            Token {
+                start: 1,
+                end: 2,
+                line: 1,
+                literal: ":".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 2,
+                end: 9,
+                line: 1,
+                literal: "integer".into(),
+                kind: TokenKind::Type,
+            },
+            Token {
+                start: 10,
+                end: 11,
+                line: 2,
+                literal: "a".into(),
+                kind: TokenKind::Identifier,
+            },
+            Token {
+                start: 12,
+                end: 13,
+                line: 2,
+                literal: ":".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 14,
+                end: 21,
+                line: 2,
+                literal: "integer".into(),
+                kind: TokenKind::Type,
+            },
         ];
-        assert!(tokens.is_ok());
 
-        let actual = tokens.unwrap();
-        assert_eq!(actual, expected);
+        let mut chars = source.chars().peekable();
+        let mut position = 0;
+        let mut line = 1;
+        let mut it_position = 0;
+
+        while let Some(tok) = lex(&mut chars, &mut position, &mut line) {
+            assert!(tok.is_ok());
+            assert_eq!(tok.unwrap(), expected[it_position]);
+            it_position += 1;
+        }
+    }
+
+    #[test]
+    fn test_variable_declaration_lex() {
+        let source = "a : integer = 0\na := 1";
+        let expected = vec![
+            Token {
+                start: 0,
+                end: 1,
+                line: 1,
+                literal: "a".into(),
+                kind: TokenKind::Identifier,
+            },
+            Token {
+                start: 2,
+                end: 3,
+                line: 1,
+                literal: ":".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 4,
+                end: 11,
+                line: 1,
+                literal: "integer".into(),
+                kind: TokenKind::Type,
+            },
+            Token {
+                start: 12,
+                end: 13,
+                line: 1,
+                literal: "=".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 14,
+                end: 15,
+                line: 1,
+                literal: "0".into(),
+                kind: TokenKind::Value,
+            },
+            Token {
+                start: 16,
+                end: 17,
+                line: 2,
+                literal: "a".into(),
+                kind: TokenKind::Identifier,
+            },
+            Token {
+                start: 18,
+                end: 19,
+                line: 2,
+                literal: ":".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 19,
+                end: 20,
+                line: 2,
+                literal: "=".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 21,
+                end: 22,
+                line: 2,
+                literal: "1".into(),
+                kind: TokenKind::Value,
+            },
+        ];
+
+        let mut chars = source.chars().peekable();
+        let mut position = 0;
+        let mut line = 1;
+        let mut it_position = 0;
+        while let Some(tok) = lex(&mut chars, &mut position, &mut line) {
+            assert!(tok.is_ok());
+            assert_eq!(tok.unwrap(), expected[it_position]);
+            it_position += 1;
+        }
+    }
+
+    #[test]
+    fn test_function_declaration_lex() {
+        let source = "defun foo(a:integer, b:integer):integer {\n\n}";
+        let expected = vec![
+            Token {
+                start: 0,
+                end: 5,
+                line: 1,
+                literal: "defun".into(),
+                kind: TokenKind::Keyword,
+            },
+            Token {
+                start: 6,
+                end: 9,
+                line: 1,
+                literal: "foo".into(),
+                kind: TokenKind::Identifier,
+            },
+            Token {
+                start: 9,
+                end: 10,
+                line: 1,
+                literal: "(".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 10,
+                end: 11,
+                line: 1,
+                literal: "a".into(),
+                kind: TokenKind::Identifier,
+            },
+            Token {
+                start: 11,
+                end: 12,
+                line: 1,
+                literal: ":".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 12,
+                end: 19,
+                line: 1,
+                literal: "integer".into(),
+                kind: TokenKind::Type,
+            },
+            Token {
+                start: 19,
+                end: 20,
+                line: 1,
+                literal: ",".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 21,
+                end: 22,
+                line: 1,
+                literal: "b".into(),
+                kind: TokenKind::Identifier,
+            },
+            Token {
+                start: 22,
+                end: 23,
+                line: 1,
+                literal: ":".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 23,
+                end: 30,
+                line: 1,
+                literal: "integer".into(),
+                kind: TokenKind::Type,
+            },
+            Token {
+                start: 30,
+                end: 31,
+                line: 1,
+                literal: ")".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 31,
+                end: 32,
+                line: 1,
+                literal: ":".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 32,
+                end: 39,
+                line: 1,
+                literal: "integer".into(),
+                kind: TokenKind::Type,
+            },
+            Token {
+                start: 40,
+                end: 41,
+                line: 1,
+                literal: "{".into(),
+                kind: TokenKind::Delimiter,
+            },
+            Token {
+                start: 43,
+                end: 44,
+                line: 3,
+                literal: "}".into(),
+                kind: TokenKind::Delimiter,
+            },
+        ];
+
+        let mut chars = source.chars().peekable();
+        let mut position = 0;
+        let mut line = 1;
+        let mut it_position = 0;
+        while let Some(tok) = lex(&mut chars, &mut position, &mut line) {
+            assert!(tok.is_ok());
+            assert_eq!(tok.unwrap(), expected[it_position]);
+            it_position += 1;
+        }
     }
 }
