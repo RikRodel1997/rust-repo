@@ -1,7 +1,6 @@
+use crate::SourceChars;
 use crate::errors::Error;
 use crate::tokens::{Token, TokenKind};
-use std::iter::Peekable;
-use std::str::Chars;
 
 const WHITESPACES: [char; 3] = [' ', '\r', '\n'];
 const DELIMITERS: [char; 7] = [':', '=', '(', ')', ',', '{', '}'];
@@ -9,7 +8,7 @@ const KEYWORDS: [&str; 1] = ["defun"];
 const TYPES: [&str; 1] = ["integer"];
 
 pub fn lex(
-    source: &mut Peekable<Chars<'_>>,
+    source: &mut SourceChars,
     position: &mut usize,
     line: &mut usize,
 ) -> Option<Result<Token, Error>> {

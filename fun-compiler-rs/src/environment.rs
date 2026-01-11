@@ -1,36 +1,34 @@
-use crate::binding::Binding;
-use crate::node::Node;
+use std::collections::HashMap;
+
+use crate::node::{Node, NodeKind, NodeValue};
 
 #[derive(Debug, Clone)]
 pub struct Environment {
     pub parent: Option<Box<Environment>>,
-    pub binding: Option<Binding>,
+    pub bindings: HashMap<String, Node>,
 }
 
 impl Environment {
     pub fn new(parent: Option<Box<Environment>>) -> Self {
         Environment {
             parent,
-            binding: None,
+            bindings: HashMap::new(),
         }
     }
 
-    pub fn set_binding(&mut self, binding: Binding) -> () {
-        if let Some(binding) = self.binding.clone() {
-            self.binding = Some(Binding::new(
-                binding.identifier.clone(),
-                binding.value.clone(),
-                Some(Box::new(binding)),
-            ));
-        } else {
-            self.binding = Some(Binding::new(binding.identifier, binding.value, None));
-        }
+    pub fn set_binding(&mut self, identifier: String, value: Node) -> () {
+        self.bindings.insert(identifier, value);
     }
 
-    pub fn get_binding(&self, identifier: &Node) -> Option<&Binding> {
-        self.binding
-            .as_ref()
-            .filter(|b| b.identifier.as_ref().unwrap() == identifier)
+    pub fn get_binding(&self, identifier: String) -> Option<&Node> {
+        self.bindings.get(&identifier)
+    }
+
+    pub fn set_type_bindings(&mut self) -> () {
+        self.set_binding(
+            "integer".into(),
+            Node::new(NodeKind::Value(NodeValue::Integer(0)), vec![], None),
+        );
     }
 }
 
@@ -40,99 +38,14 @@ mod tests {
     use crate::node::{NodeKind, NodeValue};
 
     #[test]
-    fn test_set_binding() {
+    fn test_bindings() {
         let mut env = Environment::new(None);
-        let binding = Binding::new(
-            Some(Node::new(NodeKind::Program, Box::new(vec![]), None)),
-            Some(Node::new(
-                NodeKind::Value(NodeValue::Integer(1)),
-                Box::new(vec![]),
-                None,
-            )),
-            None,
+        env.set_binding(
+            "test value".into(),
+            Node::new(NodeKind::Value(NodeValue::Integer(1)), vec![], None),
         );
-        env.set_binding(binding);
-        assert!(env.binding.is_some());
-
-        let bind = env.binding.unwrap();
-        assert_eq!(
-            bind.identifier,
-            Some(Node::new(NodeKind::Program, Box::new(vec![]), None))
-        );
-        assert_eq!(
-            bind.value,
-            Some(Node::new(
-                NodeKind::Value(NodeValue::Integer(1)),
-                Box::new(vec![]),
-                None,
-            ))
-        );
-        assert!(bind.next.is_none());
-    }
-
-    #[test]
-    fn test_get_binding() {
-        let mut env = Environment::new(None);
-        let binding = Binding::new(
-            Some(Node::new(NodeKind::Program, Box::new(vec![]), None)),
-            Some(Node::new(
-                NodeKind::Value(NodeValue::Integer(1)),
-                Box::new(vec![]),
-                None,
-            )),
-            None,
-        );
-        env.set_binding(binding);
-
-        let result = env.get_binding(&Node::new(NodeKind::Program, Box::new(vec![]), None));
-        assert!(result.is_some());
-
-        let bind = result.unwrap();
-        assert_eq!(
-            bind.identifier,
-            Some(Node::new(NodeKind::Program, Box::new(vec![]), None))
-        );
-        assert_eq!(
-            bind.value,
-            Some(Node::new(
-                NodeKind::Value(NodeValue::Integer(1)),
-                Box::new(vec![]),
-                None,
-            ))
-        );
-        assert!(bind.next.is_none());
-    }
-
-    #[test]
-    fn test_get_binding_nested() {
-        let mut env = Environment::new(None);
-        let binding = Binding::new(
-            Some(Node::new(NodeKind::Program, Box::new(vec![]), None)),
-            Some(Node::new(
-                NodeKind::Value(NodeValue::Integer(1)),
-                Box::new(vec![]),
-                None,
-            )),
-            None,
-        );
-        env.set_binding(binding);
-
-        let result = env.get_binding(&Node::new(NodeKind::Program, Box::new(vec![]), None));
-        assert!(result.is_some());
-
-        let bind = result.unwrap();
-        assert_eq!(
-            bind.identifier,
-            Some(Node::new(NodeKind::Program, Box::new(vec![]), None))
-        );
-        assert_eq!(
-            bind.value,
-            Some(Node::new(
-                NodeKind::Value(NodeValue::Integer(1)),
-                Box::new(vec![]),
-                None,
-            ))
-        );
-        assert!(bind.next.is_none());
+        let node = env.get_binding("test value".into());
+        assert!(node.is_some());
+        assert_eq!(node.unwrap().kind, NodeKind::Value(NodeValue::Integer(1)));
     }
 }

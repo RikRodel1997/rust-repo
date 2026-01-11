@@ -2,9 +2,8 @@ use std::fmt;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum NodeKind {
-    Program,
     Value(NodeValue),
-    TypeInteger,
+    Type(Type),
     BinaryOperator(BinaryOperator),
     VariableDeclaration,
     VariableDeclarationInitialized,
@@ -24,15 +23,28 @@ pub enum BinaryOperator {
     ForwardSlash,
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum Type {
+    Integer,
+}
+
+impl Type {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Type::Integer => "integer",
+        }
+    }
+}
+
 #[derive(PartialEq, Clone)]
 pub struct Node {
     pub kind: NodeKind,
-    pub children: Box<Vec<Node>>,
+    pub children: Vec<Node>,
     pub next: Option<Box<Node>>,
 }
 
 impl Node {
-    pub fn new(kind: NodeKind, children: Box<Vec<Node>>, next: Option<Box<Node>>) -> Self {
+    pub fn new(kind: NodeKind, children: Vec<Node>, next: Option<Box<Node>>) -> Self {
         Node {
             kind,
             children,
@@ -83,34 +95,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_add_child() {
+        let mut root = Node::new(NodeKind::VariableDeclaration, vec![], None);
+        let child = Node::new(NodeKind::Value(NodeValue::Integer(1)), vec![], None);
+        root.add_child(child);
+        assert_eq!(root.children.len(), 1);
+        assert_eq!(
+            root.children[0].kind,
+            NodeKind::Value(NodeValue::Integer(1))
+        );
+    }
+
+    #[test]
     fn test_node_debug() {
         let ast = Node::new(
-            NodeKind::Program,
-            Box::new(vec![]),
+            NodeKind::VariableDeclaration,
+            vec![],
             Some(Box::new(Node::new(
                 NodeKind::Value(NodeValue::Integer(1)),
-                Box::new(vec![
-                    Node::new(
-                        NodeKind::Value(NodeValue::Integer(2)),
-                        Box::new(vec![]),
-                        None,
-                    ),
-                    Node::new(
-                        NodeKind::Value(NodeValue::Integer(3)),
-                        Box::new(vec![]),
-                        None,
-                    ),
-                ]),
+                vec![
+                    Node::new(NodeKind::Value(NodeValue::Integer(2)), vec![], None),
+                    Node::new(NodeKind::Value(NodeValue::Integer(3)), vec![], None),
+                ],
                 Some(Box::new(Node::new(
                     NodeKind::Value(NodeValue::Integer(4)),
-                    Box::new(vec![]),
+                    vec![],
                     None,
                 ))),
             ))),
         );
         assert_eq!(
             format!("{:?}", ast),
-            "Program\n└──  Value(Integer(1))\n └──   Value(Integer(4))\n └──   Value(Integer(2))\n └──   Value(Integer(3))\n└──  Value(Integer(4))\n"
+            "VariableDeclaration\n└──  Value(Integer(1))\n └──   Value(Integer(4))\n └──   Value(Integer(2))\n └──   Value(Integer(3))\n└──  Value(Integer(4))\n"
         );
     }
 }

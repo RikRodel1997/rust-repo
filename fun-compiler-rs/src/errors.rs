@@ -21,7 +21,9 @@ pub enum LexerError {
 #[derive(Debug, PartialEq)]
 pub enum ParserError {
     EmptyInput,
-    NoToken,
+    UnexpectedEndOfInput,
     UnexpectedToken,
-    InvalidInteger(String),
+    InvalidInteger,
+    InvalidType,
+    UnknownIdentifier,
 }
