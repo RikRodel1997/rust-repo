@@ -4,20 +4,35 @@ use crate::tokens::{Token, TokenKind};
 
 const WHITESPACES: [char; 3] = [' ', '\r', '\n'];
 const DELIMITERS: [char; 7] = [':', '=', '(', ')', ',', '{', '}'];
+const COMMENT: char = ';';
 const KEYWORDS: [&str; 1] = ["defun"];
 const TYPES: [&str; 1] = ["integer"];
 
+// TODO: Make this a struct with a .peek() and .next() method
 pub fn lex(
-    source: &mut SourceChars,
+    chars: &mut SourceChars,
     position: &mut usize,
     line: &mut usize,
 ) -> Option<Result<Token, Error>> {
     let mut literal = String::new();
 
-    while let Some(char) = source.next() {
+    while let Some(char) = chars.next() {
         let char_size = char.len_utf8();
         let is_delimiter = DELIMITERS.contains(&char);
         let is_whitespace = WHITESPACES.contains(&char);
+        let is_comment = char == COMMENT;
+
+        if is_comment {
+            while let Some(char) = chars.next() {
+                if char == '\n' {
+                    *line += 1;
+                    break;
+                }
+                chars.next();
+                *position += char_size;
+            }
+            continue;
+        }
 
         if is_whitespace {
             if char == '\n' {
@@ -33,7 +48,16 @@ pub fn lex(
                 *position + char_size,
                 *line,
                 char.into(),
-                TokenKind::Delimiter,
+                match char {
+                    ':' => TokenKind::Colon,
+                    '=' => TokenKind::Equal,
+                    '(' => TokenKind::LeftParen,
+                    ')' => TokenKind::RightParen,
+                    ',' => TokenKind::Comma,
+                    '{' => TokenKind::LeftBrace,
+                    '}' => TokenKind::RightBrace,
+                    _ => panic!("Unexpected delimiter"),
+                },
             )));
             *position += char_size;
             return delimiter;
@@ -45,10 +69,10 @@ pub fn lex(
                 literal.push(char);
                 *position += char_size;
 
-                while let Some(&char) = source.peek() {
+                while let Some(&char) = chars.peek() {
                     if char.is_alphanumeric() {
                         literal.push(char);
-                        source.next();
+                        chars.next();
                         *position += char_size;
                     } else {
                         break;
@@ -96,7 +120,7 @@ mod tests {
                 end: 2,
                 line: 1,
                 literal: ":".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Colon,
             },
             Token {
                 start: 2,
@@ -117,7 +141,67 @@ mod tests {
                 end: 13,
                 line: 2,
                 literal: ":".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Colon,
+            },
+            Token {
+                start: 14,
+                end: 21,
+                line: 2,
+                literal: "integer".into(),
+                kind: TokenKind::Type,
+            },
+        ];
+
+        let mut chars = source.chars().peekable();
+        let mut position = 0;
+        let mut line = 1;
+        let mut it_position = 0;
+
+        while let Some(tok) = lex(&mut chars, &mut position, &mut line) {
+            assert!(tok.is_ok());
+            assert_eq!(tok.unwrap(), expected[it_position]);
+            it_position += 1;
+        }
+    }
+
+    #[test]
+    fn test_comments() {
+        let source = "a:integer ; test comment\n;another test comment\na : integer";
+        let expected = vec![
+            Token {
+                start: 0,
+                end: 1,
+                line: 1,
+                literal: "a".into(),
+                kind: TokenKind::Identifier,
+            },
+            Token {
+                start: 1,
+                end: 2,
+                line: 1,
+                literal: ":".into(),
+                kind: TokenKind::Colon,
+            },
+            Token {
+                start: 2,
+                end: 9,
+                line: 1,
+                literal: "integer".into(),
+                kind: TokenKind::Type,
+            },
+            Token {
+                start: 10,
+                end: 11,
+                line: 2,
+                literal: "a".into(),
+                kind: TokenKind::Identifier,
+            },
+            Token {
+                start: 12,
+                end: 13,
+                line: 2,
+                literal: ":".into(),
+                kind: TokenKind::Colon,
             },
             Token {
                 start: 14,
@@ -156,7 +240,7 @@ mod tests {
                 end: 3,
                 line: 1,
                 literal: ":".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Colon,
             },
             Token {
                 start: 4,
@@ -170,7 +254,7 @@ mod tests {
                 end: 13,
                 line: 1,
                 literal: "=".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Equal,
             },
             Token {
                 start: 14,
@@ -191,14 +275,14 @@ mod tests {
                 end: 19,
                 line: 2,
                 literal: ":".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Colon,
             },
             Token {
                 start: 19,
                 end: 20,
                 line: 2,
                 literal: "=".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Equal,
             },
             Token {
                 start: 21,
@@ -243,7 +327,7 @@ mod tests {
                 end: 10,
                 line: 1,
                 literal: "(".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::LeftParen,
             },
             Token {
                 start: 10,
@@ -257,7 +341,7 @@ mod tests {
                 end: 12,
                 line: 1,
                 literal: ":".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Colon,
             },
             Token {
                 start: 12,
@@ -271,7 +355,7 @@ mod tests {
                 end: 20,
                 line: 1,
                 literal: ",".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Comma,
             },
             Token {
                 start: 21,
@@ -285,7 +369,7 @@ mod tests {
                 end: 23,
                 line: 1,
                 literal: ":".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Colon,
             },
             Token {
                 start: 23,
@@ -299,14 +383,14 @@ mod tests {
                 end: 31,
                 line: 1,
                 literal: ")".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::RightParen,
             },
             Token {
                 start: 31,
                 end: 32,
                 line: 1,
                 literal: ":".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::Colon,
             },
             Token {
                 start: 32,
@@ -320,14 +404,14 @@ mod tests {
                 end: 41,
                 line: 1,
                 literal: "{".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::LeftBrace,
             },
             Token {
                 start: 43,
                 end: 44,
                 line: 3,
                 literal: "}".into(),
-                kind: TokenKind::Delimiter,
+                kind: TokenKind::RightBrace,
             },
         ];
 

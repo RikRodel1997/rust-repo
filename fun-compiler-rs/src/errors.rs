@@ -6,6 +6,12 @@ pub struct Error {
     pub message: String,
 }
 
+impl Error {
+    pub fn new(kind: ErrorKind, message: String) -> Self {
+        Self { kind, message }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ErrorKind {
     Parser(ParserError),

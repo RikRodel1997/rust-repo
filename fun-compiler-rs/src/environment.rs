@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::node::{Node, NodeKind, NodeValue};
+use crate::node::{Node, NodeKind, Type};
 
 #[derive(Debug, Clone)]
 pub struct Environment {
@@ -27,7 +27,7 @@ impl Environment {
     pub fn set_type_bindings(&mut self) -> () {
         self.set_binding(
             "integer".into(),
-            Node::new(NodeKind::Value(NodeValue::Integer(0)), vec![], None),
+            Node::new(NodeKind::Value(Type::Integer(0)), vec![], None),
         );
     }
 }
@@ -35,17 +35,17 @@ impl Environment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{NodeKind, NodeValue};
+    use crate::node::{NodeKind, Type};
 
     #[test]
     fn test_bindings() {
         let mut env = Environment::new(None);
         env.set_binding(
             "test value".into(),
-            Node::new(NodeKind::Value(NodeValue::Integer(1)), vec![], None),
+            Node::new(NodeKind::Value(Type::Integer(1)), vec![], None),
         );
         let node = env.get_binding("test value".into());
         assert!(node.is_some());
-        assert_eq!(node.unwrap().kind, NodeKind::Value(NodeValue::Integer(1)));
+        assert_eq!(node.unwrap().kind, NodeKind::Value(Type::Integer(1)));
     }
 }

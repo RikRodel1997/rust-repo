@@ -1,17 +1,17 @@
 use std::fmt;
 
+pub type Symbol = String;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum NodeKind {
-    Value(NodeValue),
-    Type(Type),
+    Value(Type),
     BinaryOperator(BinaryOperator),
-    VariableDeclaration,
+    VariableDeclaration(Symbol),
     VariableDeclarationInitialized,
-    Symbol(String),
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum NodeValue {
+pub enum Type {
     Integer(i64),
 }
 
@@ -21,19 +21,6 @@ pub enum BinaryOperator {
     Minus,
     Star,
     ForwardSlash,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Type {
-    Integer,
-}
-
-impl Type {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Type::Integer => "integer",
-        }
-    }
 }
 
 #[derive(PartialEq, Clone)]
@@ -96,29 +83,26 @@ mod tests {
 
     #[test]
     fn test_add_child() {
-        let mut root = Node::new(NodeKind::VariableDeclaration, vec![], None);
-        let child = Node::new(NodeKind::Value(NodeValue::Integer(1)), vec![], None);
+        let mut root = Node::new(NodeKind::VariableDeclaration("x".to_string()), vec![], None);
+        let child = Node::new(NodeKind::Value(Type::Integer(1)), vec![], None);
         root.add_child(child);
         assert_eq!(root.children.len(), 1);
-        assert_eq!(
-            root.children[0].kind,
-            NodeKind::Value(NodeValue::Integer(1))
-        );
+        assert_eq!(root.children[0].kind, NodeKind::Value(Type::Integer(1)));
     }
 
     #[test]
     fn test_node_debug() {
         let ast = Node::new(
-            NodeKind::VariableDeclaration,
+            NodeKind::VariableDeclaration("x".to_string()),
             vec![],
             Some(Box::new(Node::new(
-                NodeKind::Value(NodeValue::Integer(1)),
+                NodeKind::Value(Type::Integer(1)),
                 vec![
-                    Node::new(NodeKind::Value(NodeValue::Integer(2)), vec![], None),
-                    Node::new(NodeKind::Value(NodeValue::Integer(3)), vec![], None),
+                    Node::new(NodeKind::Value(Type::Integer(2)), vec![], None),
+                    Node::new(NodeKind::Value(Type::Integer(3)), vec![], None),
                 ],
                 Some(Box::new(Node::new(
-                    NodeKind::Value(NodeValue::Integer(4)),
+                    NodeKind::Value(Type::Integer(4)),
                     vec![],
                     None,
                 ))),
@@ -126,7 +110,7 @@ mod tests {
         );
         assert_eq!(
             format!("{:?}", ast),
-            "VariableDeclaration\n└──  Value(Integer(1))\n └──   Value(Integer(4))\n └──   Value(Integer(2))\n └──   Value(Integer(3))\n└──  Value(Integer(4))\n"
+            "VariableDeclaration(\"x\")\n└──  Value(Integer(1))\n └──   Value(Integer(4))\n └──   Value(Integer(2))\n └──   Value(Integer(3))\n└──  Value(Integer(4))\n"
         );
     }
 }
