@@ -1,4 +1,4 @@
-mod environment;
+#![cfg_attr(test, allow(warnings))]
 mod errors;
 mod lexer;
 mod node;
@@ -26,7 +26,7 @@ fn main() {
     let _ = match parse(source, &mut context) {
         Ok(program) => program,
         Err(e) => {
-            println!("Parser error: {:?}", e);
+            println!("Parser error: {:?} | message: {}", e.kind, e.message);
             exit(1)
         }
     };

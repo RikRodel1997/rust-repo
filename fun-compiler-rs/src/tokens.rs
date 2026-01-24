@@ -25,7 +25,6 @@ pub enum TokenKind {
     Keyword,
     Type,
     Value,
-    Eof,
     Colon,
     Equal,
     LeftParen,

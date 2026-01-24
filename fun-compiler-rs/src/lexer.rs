@@ -1,53 +1,101 @@
 use crate::SourceChars;
-use crate::errors::Error;
 use crate::tokens::{Token, TokenKind};
 
 const WHITESPACES: [char; 3] = [' ', '\r', '\n'];
 const DELIMITERS: [char; 7] = [':', '=', '(', ')', ',', '{', '}'];
-const COMMENT: char = ';';
+const COMMENTS: [char; 1] = [';'];
 const KEYWORDS: [&str; 1] = ["defun"];
 const TYPES: [&str; 1] = ["integer"];
 
-// TODO: Make this a struct with a .peek() and .next() method
-pub fn lex(
-    chars: &mut SourceChars,
-    position: &mut usize,
-    line: &mut usize,
-) -> Option<Result<Token, Error>> {
-    let mut literal = String::new();
+pub struct Lexer<'a> {
+    chars: SourceChars<'a>,
+    peeked: Option<Token>,
+    pub position: usize,
+    pub line: usize,
+}
 
-    while let Some(char) = chars.next() {
-        let char_size = char.len_utf8();
-        let is_delimiter = DELIMITERS.contains(&char);
-        let is_whitespace = WHITESPACES.contains(&char);
-        let is_comment = char == COMMENT;
+impl<'a> Lexer<'a> {
+    pub fn new(chars: SourceChars<'a>) -> Self {
+        Lexer {
+            chars,
+            peeked: None,
+            position: 0,
+            line: 1,
+        }
+    }
 
-        if is_comment {
-            while let Some(char) = chars.next() {
+    pub fn next_token(&mut self) -> Option<Token> {
+        if self.peeked.is_some() {
+            return self.peeked.take();
+        }
+
+        while let Some(char) = self.next_char() {
+            if self.comment(&char) || self.whitespace(&char) {
+                continue;
+            }
+
+            match self.delimiter(&char) {
+                Some(token) => return Some(token),
+                None => {}
+            }
+
+            return Some(self.alphanumeric(&char));
+        }
+
+        None
+    }
+
+    pub fn peek_token(&mut self) -> Option<Token> {
+        if self.peeked.is_none() {
+            self.peeked = self.next_token();
+        }
+
+        self.peeked.clone()
+    }
+
+    pub fn next_char(&mut self) -> Option<char> {
+        self.chars.next()
+    }
+
+    pub fn peek_char(&mut self) -> Option<&char> {
+        self.chars.peek()
+    }
+
+    fn whitespace(&mut self, char: &char) -> bool {
+        if WHITESPACES.contains(&char) {
+            if char == &'\n' {
+                self.line += 1;
+            }
+            self.position += char.len_utf8();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn comment(&mut self, char: &char) -> bool {
+        if COMMENTS.contains(&char) {
+            while let Some(char) = self.next_char() {
                 if char == '\n' {
-                    *line += 1;
+                    self.line += 1;
                     break;
                 }
-                chars.next();
-                *position += char_size;
+                self.next_char();
+                self.position += char.len_utf8();
             }
-            continue;
+            true
+        } else {
+            false
         }
+    }
 
-        if is_whitespace {
-            if char == '\n' {
-                *line += 1;
-            }
-            *position += char_size;
-            continue;
-        }
-
-        if is_delimiter {
-            let delimiter = Some(Ok(Token::new(
-                *position,
-                *position + char_size,
-                *line,
-                char.into(),
+    fn delimiter(&mut self, char: &char) -> Option<Token> {
+        if DELIMITERS.contains(&char) {
+            let delimiter = Some(Token::new(
+                self.position,
+                self.position + char.len_utf8(),
+                self.line,
+                char.clone().into(),
                 match char {
                     ':' => TokenKind::Colon,
                     '=' => TokenKind::Equal,
@@ -58,46 +106,38 @@ pub fn lex(
                     '}' => TokenKind::RightBrace,
                     _ => panic!("Unexpected delimiter"),
                 },
-            )));
-            *position += char_size;
+            ));
+            self.position += char.len_utf8();
             return delimiter;
         }
+        None
+    }
 
-        if !is_whitespace && !is_delimiter {
+    fn alphanumeric(&mut self, char: &char) -> Token {
+        let mut literal = String::new();
+        let start_pos = self.position;
+        literal.push(*char);
+        self.position += char.len_utf8();
+
+        while let Some(&char) = self.peek_char() {
             if char.is_alphanumeric() {
-                let literal_start = *position;
                 literal.push(char);
-                *position += char_size;
-
-                while let Some(&char) = chars.peek() {
-                    if char.is_alphanumeric() {
-                        literal.push(char);
-                        chars.next();
-                        *position += char_size;
-                    } else {
-                        break;
-                    }
-                }
-
-                let kind = match literal {
-                    _ if KEYWORDS.contains(&literal.as_str()) => TokenKind::Keyword,
-                    _ if TYPES.contains(&literal.as_str()) => TokenKind::Type,
-                    _ if literal.chars().next().unwrap().is_numeric() => TokenKind::Value,
-                    _ => TokenKind::Identifier,
-                };
-
-                return Some(Ok(Token::new(
-                    literal_start,
-                    *position,
-                    *line,
-                    literal,
-                    kind,
-                )));
+                self.next_char();
+                self.position += char.len_utf8();
+            } else {
+                break;
             }
         }
-        continue;
+
+        let kind = match literal {
+            _ if KEYWORDS.contains(&literal.as_str()) => TokenKind::Keyword,
+            _ if TYPES.contains(&literal.as_str()) => TokenKind::Type,
+            _ if literal.chars().next().unwrap().is_numeric() => TokenKind::Value,
+            _ => TokenKind::Identifier,
+        };
+
+        Token::new(start_pos, self.position, self.line, literal, kind)
     }
-    None
 }
 
 #[cfg(test)]
@@ -152,16 +192,83 @@ mod tests {
             },
         ];
 
-        let mut chars = source.chars().peekable();
-        let mut position = 0;
-        let mut line = 1;
+        let chars = source.chars().peekable();
         let mut it_position = 0;
 
-        while let Some(tok) = lex(&mut chars, &mut position, &mut line) {
-            assert!(tok.is_ok());
-            assert_eq!(tok.unwrap(), expected[it_position]);
+        let mut lexer = Lexer::new(chars);
+
+        while let Some(tok) = lexer.next_token() {
+            assert_eq!(tok, expected[it_position]);
             it_position += 1;
         }
+    }
+
+    #[test]
+    fn test_peek_token() {
+        let source = "a:integer";
+
+        let chars = source.chars().peekable();
+
+        let mut lexer = Lexer::new(chars);
+        let peeked_identifier = lexer.peek_token();
+        assert_eq!(
+            peeked_identifier,
+            Some(Token {
+                start: 0,
+                end: 1,
+                line: 1,
+                literal: "a".into(),
+                kind: TokenKind::Identifier
+            })
+        );
+
+        let token_identifier = lexer.next_token();
+        assert_eq!(
+            token_identifier,
+            Some(Token {
+                start: 0,
+                end: 1,
+                line: 1,
+                literal: "a".into(),
+                kind: TokenKind::Identifier
+            })
+        );
+
+        let colon = lexer.next_token();
+        assert_eq!(
+            colon,
+            Some(Token {
+                start: 1,
+                end: 2,
+                line: 1,
+                literal: ":".into(),
+                kind: TokenKind::Colon
+            })
+        );
+
+        let peeked_type = lexer.peek_token();
+        assert_eq!(
+            peeked_type,
+            Some(Token {
+                start: 2,
+                end: 9,
+                line: 1,
+                literal: "integer".into(),
+                kind: TokenKind::Type
+            })
+        );
+
+        let type_token = lexer.next_token();
+        assert_eq!(
+            type_token,
+            Some(Token {
+                start: 2,
+                end: 9,
+                line: 1,
+                literal: "integer".into(),
+                kind: TokenKind::Type
+            })
+        );
     }
 
     #[test]
@@ -212,14 +319,13 @@ mod tests {
             },
         ];
 
-        let mut chars = source.chars().peekable();
-        let mut position = 0;
-        let mut line = 1;
+        let chars = source.chars().peekable();
         let mut it_position = 0;
 
-        while let Some(tok) = lex(&mut chars, &mut position, &mut line) {
-            assert!(tok.is_ok());
-            assert_eq!(tok.unwrap(), expected[it_position]);
+        let mut lexer = Lexer::new(chars);
+
+        while let Some(tok) = lexer.next_token() {
+            assert_eq!(tok, expected[it_position]);
             it_position += 1;
         }
     }
@@ -293,13 +399,13 @@ mod tests {
             },
         ];
 
-        let mut chars = source.chars().peekable();
-        let mut position = 0;
-        let mut line = 1;
+        let chars = source.chars().peekable();
         let mut it_position = 0;
-        while let Some(tok) = lex(&mut chars, &mut position, &mut line) {
-            assert!(tok.is_ok());
-            assert_eq!(tok.unwrap(), expected[it_position]);
+
+        let mut lexer = Lexer::new(chars);
+
+        while let Some(tok) = lexer.next_token() {
+            assert_eq!(tok, expected[it_position]);
             it_position += 1;
         }
     }
@@ -415,13 +521,13 @@ mod tests {
             },
         ];
 
-        let mut chars = source.chars().peekable();
-        let mut position = 0;
-        let mut line = 1;
+        let chars = source.chars().peekable();
         let mut it_position = 0;
-        while let Some(tok) = lex(&mut chars, &mut position, &mut line) {
-            assert!(tok.is_ok());
-            assert_eq!(tok.unwrap(), expected[it_position]);
+
+        let mut lexer = Lexer::new(chars);
+
+        while let Some(tok) = lexer.next_token() {
+            assert_eq!(tok, expected[it_position]);
             it_position += 1;
         }
     }

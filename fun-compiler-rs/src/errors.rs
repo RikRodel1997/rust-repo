@@ -1,34 +1,22 @@
 use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
-pub struct Error {
-    pub kind: ErrorKind,
+pub struct ParserError {
+    pub kind: ParserErrorKind,
     pub message: String,
 }
 
-impl Error {
-    pub fn new(kind: ErrorKind, message: String) -> Self {
+impl ParserError {
+    pub fn new(kind: ParserErrorKind, message: String) -> Self {
         Self { kind, message }
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ErrorKind {
-    Parser(ParserError),
-    Lexer(LexerError),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum LexerError {
+pub enum ParserErrorKind {
     EmptyInput,
     UnexpectedToken,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum ParserError {
-    EmptyInput,
-    UnexpectedEndOfInput,
-    UnexpectedToken,
+    VariableAlreadyDeclared,
     InvalidInteger,
     InvalidType,
     UnknownIdentifier,
