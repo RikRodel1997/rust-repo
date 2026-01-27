@@ -1,4 +1,5 @@
 #![cfg_attr(test, allow(warnings))]
+mod codegen;
 mod errors;
 mod lexer;
 mod node;

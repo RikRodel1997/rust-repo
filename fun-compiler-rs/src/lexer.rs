@@ -53,11 +53,11 @@ impl<'a> Lexer<'a> {
         self.peeked.clone()
     }
 
-    pub fn next_char(&mut self) -> Option<char> {
+    fn next_char(&mut self) -> Option<char> {
         self.chars.next()
     }
 
-    pub fn peek_char(&mut self) -> Option<&char> {
+    fn peek_char(&mut self) -> Option<&char> {
         self.chars.peek()
     }
 

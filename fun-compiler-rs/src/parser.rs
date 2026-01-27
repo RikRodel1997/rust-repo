@@ -41,9 +41,7 @@ pub fn parse(source: String, context: &mut ParsingContext) -> Result<Program, Pa
             TokenKind::Value => program.add_node(value(&literal)?),
             TokenKind::Identifier => {
                 next_literal(&mut lexer, ":")?;
-                let peeked = lexer
-                    .peek_token()
-                    .expect("Unexpected end of input during identifier parsing");
+                let peeked = peek_or_err(&mut lexer, "literal")?;
                 match peeked.kind {
                     TokenKind::Type => {
                         if context.variables.contains_key(&literal) {
@@ -118,11 +116,7 @@ fn variable_declaration(
                 next_literal(lexer, "=")?;
 
                 let value = next_value(lexer)?;
-                var_decl.add_child(Node::new(
-                    NodeKind::Value(Some(Type::Integer(value))),
-                    vec![],
-                    None,
-                ));
+                var_decl.add_child(value);
             }
             _ => {
                 var_decl.add_child(Node::new(NodeKind::Value(None), vec![], None));
@@ -138,19 +132,14 @@ fn variable_declaration(
 
 fn variable_re_assignment(lexer: &mut Lexer) -> Result<Node, ParserError> {
     next_literal(lexer, "=")?;
-
     let value = next_value(lexer)?;
-    let node = Node::new(NodeKind::Value(Some(Type::Integer(value))), vec![], None);
-
-    Ok(node)
+    Ok(value)
 }
 
 fn next_type(lexer: &mut Lexer, context: &mut ParsingContext) -> Result<Type, ParserError> {
-    let token = lexer
-        .next_token()
-        .expect("Unexpected end of input during type parsing");
-
+    let token = next_or_err(lexer, "type")?;
     let literal = token.literal;
+
     let is_valid = context.types.get(&literal);
 
     if is_valid.is_none() {
@@ -163,11 +152,8 @@ fn next_type(lexer: &mut Lexer, context: &mut ParsingContext) -> Result<Type, Pa
     Ok(is_valid.unwrap().clone())
 }
 
-fn next_value(lexer: &mut Lexer) -> Result<i64, ParserError> {
-    let token = lexer
-        .next_token()
-        .expect("Unexpected end of input during value parsing");
-
+fn next_value(lexer: &mut Lexer) -> Result<Node, ParserError> {
+    let token = next_or_err(lexer, "value")?;
     let literal = &token.literal;
 
     let value = match token.kind {
@@ -179,15 +165,16 @@ fn next_value(lexer: &mut Lexer) -> Result<i64, ParserError> {
             value
         }
         _ => {
-            let kind = token.kind;
             return Err(ParserError::new(
                 ParserErrorKind::UnexpectedToken,
-                format!("Unexpected token value. Got {kind:?}"),
+                format!("Unexpected token value. Got {:?}", token.kind),
             ));
         }
     };
 
-    Ok(value)
+    let node = Node::new(NodeKind::Value(Some(Type::Integer(value))), vec![], None);
+
+    Ok(node)
 }
 
 fn value(literal: &str) -> Result<Node, ParserError> {
@@ -205,10 +192,7 @@ fn value(literal: &str) -> Result<Node, ParserError> {
 }
 
 fn next_literal(lexer: &mut Lexer, expected: &str) -> Result<Token, ParserError> {
-    let token = lexer
-        .next_token()
-        .expect("Unexpected end of input during literal parsing");
-
+    let token = next_or_err(lexer, "literal")?;
     let literal = &token.literal;
 
     if literal != expected {
@@ -218,6 +202,26 @@ fn next_literal(lexer: &mut Lexer, expected: &str) -> Result<Token, ParserError>
         ));
     }
     Ok(token)
+}
+
+fn peek_or_err(lexer: &mut Lexer, location: &str) -> Result<Token, ParserError> {
+    match lexer.peek_token() {
+        Some(token) => Ok(token),
+        None => Err(ParserError::new(
+            ParserErrorKind::UnexpectedToken,
+            format!("Unexpected end of input during {location} parsing"),
+        )),
+    }
+}
+
+fn next_or_err(lexer: &mut Lexer, location: &str) -> Result<Token, ParserError> {
+    match lexer.next_token() {
+        Some(token) => Ok(token),
+        None => Err(ParserError::new(
+            ParserErrorKind::UnexpectedToken,
+            format!("Unexpected end of input during {location} parsing"),
+        )),
+    }
 }
 
 #[cfg(test)]

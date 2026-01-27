@@ -21,3 +21,18 @@ pub enum ParserErrorKind {
     InvalidType,
     UnknownIdentifier,
 }
+
+#[derive(Debug, PartialEq)]
+pub struct ProgramError {
+    pub kind: ProgramErrorKind,
+    pub message: String,
+}
+
+impl ProgramError {
+    pub fn new(kind: ProgramErrorKind, message: String) -> Self {
+        Self { kind, message }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ProgramErrorKind {}
