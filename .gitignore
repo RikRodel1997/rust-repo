@@ -1,2 +1,4 @@
 **/target
 .env
+writing-a-c-compiler/**.s
+writing-a-c-compiler/return_2
