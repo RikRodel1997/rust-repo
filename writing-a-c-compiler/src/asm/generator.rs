@@ -1,4 +1,4 @@
-use crate::asm::ast::{AsmNode, Instruction, Operand};
+use crate::asm::ast::AsmNode;
 
 pub struct AsmGenerator<'a> {
     pub ast: &'a AsmNode,
@@ -29,31 +29,15 @@ impl<'a> AsmGenerator<'a> {
         match node {
             AsmNode::Function { name, instructions } => {
                 let mut asm_code = format!(".globl {name}\n{name}:\n");
+                asm_code.push_str("\tpush\t%rbp\n");
+                asm_code.push_str("\tmovq\t%rsp, %rbp\n");
                 let mut instructions = instructions.iter();
                 while let Some(AsmNode::Instruction(instruction)) = instructions.next() {
-                    asm_code.push_str(&self.instruction_asm(instruction)?);
+                    asm_code.push_str(&format!("\t{}\n", instruction.to_asm()));
                 }
                 Ok(asm_code)
             }
             _ => Err(format!("unknown node to generate ASM {}", node)),
-        }
-    }
-
-    fn instruction_asm(&self, instruction: &Instruction) -> Result<String, String> {
-        match instruction {
-            Instruction::Mov { src, dst } => Ok(format!(
-                "\tmovl {}, {}\n",
-                self.operand_asm(src)?,
-                self.operand_asm(dst)?
-            )),
-            Instruction::Ret => Ok("\tret\n".into()),
-        }
-    }
-
-    fn operand_asm(&self, operand: &Operand) -> Result<String, String> {
-        match operand {
-            Operand::Imm(value) => Ok(format!("${value}")),
-            Operand::Register => Ok("%eax".into()),
         }
     }
 }
@@ -65,14 +49,21 @@ mod tests {
     use std::io::Write;
 
     use super::*;
-    use crate::{Lexer, asm::parser::AsmParser, parser::Parser};
+    use crate::{Lexer, asm::parser::AsmParser, parser::Parser, tacky::TackyParser};
 
     #[test]
-    fn test_01() {
+    fn test_01() -> Result<(), String> {
         fn expected(value: i64) -> String {
-            format!(
-                ".globl main\nmain:\n\tmovl ${value}, %eax\n\tret\n.section .note.GNU-stack,\"\",@progbits"
-            )
+            let mut expected = String::from(".globl main\n");
+            expected.push_str("main:\n");
+            expected.push_str("\tpush\t%rbp\n");
+            expected.push_str("\tmovq\t%rsp, %rbp\n");
+            expected.push_str(format!("\tmovl\t${value}, %eax\n").as_str());
+            expected.push_str("\tmovq\t%rbp, %rsp\n");
+            expected.push_str("\tpopq\t%rbp\n");
+            expected.push_str("\tret\n");
+            expected.push_str(".section .note.GNU-stack,\"\",@progbits");
+            expected
         }
 
         fn generate_file(file_path: &str, buf: &str) -> () {
@@ -94,16 +85,166 @@ mod tests {
         for (file, expected) in tests.into_iter() {
             let file_path = format!("files/01/{file}");
             let input = fs::read_to_string(file_path.clone()).expect("unable to read file");
-            let tokens = Lexer::new(&input).lex().expect("lexing failed");
-            let ast = Parser::new(&tokens).parse().expect("parsing failed");
-            let asm_ast = AsmParser::new(&ast).parse().expect("asm parsing failed");
-            let actual = AsmGenerator::new(&asm_ast)
-                .generate()
-                .expect("asm code generation failed");
+            let tokens = Lexer::new(&input).lex()?;
+            let ast = Parser::new(&tokens).parse()?;
+            let tacky_ir = TackyParser::new(&ast).parse()?;
+            let mut asm_parser = AsmParser::new(&tacky_ir);
+            asm_parser.parse()?;
+            let asm_ast = asm_parser.asm_ast.expect("expected asm_ast to be present");
+            let actual = AsmGenerator::new(&asm_ast).generate()?;
 
             generate_file(&file_path, &actual);
 
             assert_eq!(actual, expected);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_02() -> Result<(), String> {
+        fn expected(value: i64, stack_size: i8, instructions: Vec<&str>) -> String {
+            let mut expected = String::from(".globl main\n");
+            expected.push_str("main:\n");
+            expected.push_str("\tpush\t%rbp\n");
+            expected.push_str("\tmovq\t%rsp, %rbp\n");
+            expected.push_str(format!("\tsubq\t${stack_size}, %rsp\n").as_str());
+            expected.push_str(format!("\tmovl\t${value}, -4(%rbp)\n").as_str());
+            for instruction in instructions.iter() {
+                expected.push_str(*instruction);
+            }
+            expected.push_str("\tmovq\t%rbp, %rsp\n");
+            expected.push_str("\tpopq\t%rbp\n");
+            expected.push_str("\tret\n");
+            expected.push_str(".section .note.GNU-stack,\"\",@progbits");
+            expected
+        }
+
+        fn generate_file(file_path: &str, buf: &str) -> () {
+            let path = format!("{}.s", file_path.split(".c").nth(0).unwrap());
+            let mut file = File::create(path).unwrap();
+            file.write_all(buf.as_bytes()).unwrap();
+        }
+
+        let tests = vec![
+            (
+                "bitwise_int_min.c",
+                expected(
+                    2147483647,
+                    8,
+                    vec![
+                        "\tnegl\t-4(%rbp)\n",
+                        "\tmovl\t-4(%rbp), %r10d\n",
+                        "\tmovl\t%r10d, -8(%rbp)\n",
+                        "\tnotl\t-8(%rbp)\n",
+                        "\tmovl\t-8(%rbp), %eax\n",
+                    ],
+                ),
+            ),
+            (
+                "bitwise_zero.c",
+                expected(0, 4, vec!["\tnotl\t-4(%rbp)\n", "\tmovl\t-4(%rbp), %eax\n"]),
+            ),
+            (
+                "bitwise.c",
+                expected(
+                    12,
+                    4,
+                    vec!["\tnotl\t-4(%rbp)\n", "\tmovl\t-4(%rbp), %eax\n"],
+                ),
+            ),
+            (
+                "neg_zero.c",
+                expected(0, 4, vec!["\tnegl\t-4(%rbp)\n", "\tmovl\t-4(%rbp), %eax\n"]),
+            ),
+            (
+                "neg.c",
+                expected(5, 4, vec!["\tnegl\t-4(%rbp)\n", "\tmovl\t-4(%rbp), %eax\n"]),
+            ),
+            (
+                "negate_int_max.c",
+                expected(
+                    2147483647,
+                    4,
+                    vec!["\tnegl\t-4(%rbp)\n", "\tmovl\t-4(%rbp), %eax\n"],
+                ),
+            ),
+            (
+                "nested_ops_2.c",
+                expected(
+                    0,
+                    8,
+                    vec![
+                        "\tnotl\t-4(%rbp)\n",
+                        "\tmovl\t-4(%rbp), %r10d\n",
+                        "\tmovl\t%r10d, -8(%rbp)\n",
+                        "\tnegl\t-8(%rbp)\n",
+                        "\tmovl\t-8(%rbp), %eax\n",
+                    ],
+                ),
+            ),
+            (
+                "nested_ops.c",
+                expected(
+                    3,
+                    8,
+                    vec![
+                        "\tnegl\t-4(%rbp)\n",
+                        "\tmovl\t-4(%rbp), %r10d\n",
+                        "\tmovl\t%r10d, -8(%rbp)\n",
+                        "\tnotl\t-8(%rbp)\n",
+                        "\tmovl\t-8(%rbp), %eax\n",
+                    ],
+                ),
+            ),
+            (
+                "parens_2.c",
+                expected(2, 4, vec!["\tnotl\t-4(%rbp)\n", "\tmovl\t-4(%rbp), %eax\n"]),
+            ),
+            (
+                "parens_3.c",
+                expected(
+                    4,
+                    8,
+                    vec![
+                        "\tnegl\t-4(%rbp)\n",
+                        "\tmovl\t-4(%rbp), %r10d\n",
+                        "\tmovl\t%r10d, -8(%rbp)\n",
+                        "\tnegl\t-8(%rbp)\n",
+                        "\tmovl\t-8(%rbp), %eax\n",
+                    ],
+                ),
+            ),
+            (
+                "parens.c",
+                expected(2, 4, vec!["\tnegl\t-4(%rbp)\n", "\tmovl\t-4(%rbp), %eax\n"]),
+            ),
+            (
+                "redundant_parens.c",
+                expected(
+                    10,
+                    4,
+                    vec!["\tnegl\t-4(%rbp)\n", "\tmovl\t-4(%rbp), %eax\n"],
+                ),
+            ),
+        ];
+
+        for (file, expected) in tests.into_iter() {
+            let file_path = format!("files/02/{file}");
+            let input = fs::read_to_string(file_path.clone()).expect("unable to read file");
+            let tokens = Lexer::new(&input).lex()?;
+            let ast = Parser::new(&tokens).parse()?;
+            let tacky_ir = TackyParser::new(&ast).parse()?;
+            let mut asm_parser = AsmParser::new(&tacky_ir);
+            asm_parser.parse()?;
+            asm_parser.parse_pseudo()?;
+            asm_parser.replace_mov()?;
+
+            let asm_ast = asm_parser.asm_ast.expect("expected asm_ast to be present");
+            let actual = AsmGenerator::new(&asm_ast).generate()?;
+
+            assert_eq!(actual, expected);
+            generate_file(&file_path, &actual);
+        }
+        Ok(())
     }
 }

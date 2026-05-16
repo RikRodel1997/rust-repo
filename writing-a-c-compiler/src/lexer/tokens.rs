@@ -12,6 +12,9 @@ pub enum Token {
     OpenBrace,
     CloseBrace,
     SemiColon,
+    Tilde,
+    Hyphen,
+    DoubleHyphen,
 }
 
 impl Display for Token {
@@ -27,6 +30,9 @@ impl Display for Token {
             Self::OpenBrace => write!(f, "{{"),
             Self::CloseBrace => write!(f, "}}"),
             Self::SemiColon => write!(f, ";"),
+            Self::Tilde => write!(f, "~"),
+            Self::Hyphen => write!(f, "-"),
+            Self::DoubleHyphen => write!(f, "--"),
         }
     }
 }

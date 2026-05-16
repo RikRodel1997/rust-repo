@@ -15,12 +15,6 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&mut self) -> Result<Node, String> {
-        let program = self.parse_program()?;
-
-        Ok(program)
-    }
-
-    fn parse_program(&mut self) -> Result<Node, String> {
         Ok(Node::Program {
             function: Box::new(self.parse_function()?),
         })
@@ -65,6 +59,19 @@ impl<'a> Parser<'a> {
 
         match token {
             Token::Constant(constant) => Ok(Node::Expression(Expression::Constant(*constant))),
+            Token::Hyphen | Token::Tilde => {
+                let operator = UnaryOperator::try_from(token)?;
+                let expression = Box::new(self.parse_expression()?);
+                Ok(Node::Expression(Expression::Unary {
+                    operator,
+                    expression,
+                }))
+            }
+            Token::OpenParen => {
+                let expression = self.parse_expression()?;
+                self.expect(Token::CloseParen)?;
+                Ok(expression)
+            }
             _ => Err(format!("unknown token in expression {}", token)),
         }
     }
@@ -90,17 +97,21 @@ mod tests {
     use super::*;
     use crate::Lexer;
 
+    fn program_node(body: Node) -> Node {
+        Node::Program {
+            function: Box::new(Node::Function {
+                name: Box::new(Node::Identifier("main".into())),
+                body: Box::new(body),
+            }),
+        }
+    }
+
     #[test]
-    fn test_01() {
+    fn test_01() -> Result<(), String> {
         fn expected(value: i64) -> Node {
-            return Node::Program {
-                function: Box::new(Node::Function {
-                    name: Box::new(Node::Identifier("main".into())),
-                    body: Box::new(Node::Statement(Statement::Return(Box::new(
-                        Node::Expression(Expression::Constant(value)),
-                    )))),
-                }),
-            };
+            program_node(Node::Statement(Statement::Return(Box::new(
+                Node::Expression(Expression::Constant(value)),
+            ))))
         }
 
         let tests = vec![
@@ -116,9 +127,129 @@ mod tests {
         for (file, expected) in tests.into_iter() {
             let file_path = format!("files/01/{file}");
             let input = fs::read_to_string(file_path).expect("unable to read file");
-            let tokens = Lexer::new(&input).lex().expect("lexing failed");
-            let actual = Parser::new(&tokens).parse().expect("parsing failed");
+            let tokens = Lexer::new(&input).lex()?;
+            let actual = Parser::new(&tokens).parse()?;
             assert_eq!(actual, expected);
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_02() -> Result<(), String> {
+        fn expected(value: Expression) -> Node {
+            program_node(Node::Statement(Statement::Return(Box::new(
+                Node::Expression(value),
+            ))))
+        }
+
+        let tests = vec![
+            (
+                "bitwise_int_min.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Complement,
+                    expression: Box::new(Node::Expression(Expression::Unary {
+                        operator: UnaryOperator::Negate,
+                        expression: Box::new(Node::Expression(Expression::Constant(2147483647))),
+                    })),
+                }),
+            ),
+            (
+                "bitwise_zero.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Complement,
+                    expression: Box::new(Node::Expression(Expression::Constant(0))),
+                }),
+            ),
+            (
+                "bitwise.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Complement,
+                    expression: Box::new(Node::Expression(Expression::Constant(12))),
+                }),
+            ),
+            (
+                "neg_zero.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Negate,
+                    expression: Box::new(Node::Expression(Expression::Constant(0))),
+                }),
+            ),
+            (
+                "neg.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Negate,
+                    expression: Box::new(Node::Expression(Expression::Constant(5))),
+                }),
+            ),
+            (
+                "negate_int_max.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Negate,
+                    expression: Box::new(Node::Expression(Expression::Constant(2147483647))),
+                }),
+            ),
+            (
+                "nested_ops_2.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Negate,
+                    expression: Box::new(Node::Expression(Expression::Unary {
+                        operator: UnaryOperator::Complement,
+                        expression: Box::new(Node::Expression(Expression::Constant(0))),
+                    })),
+                }),
+            ),
+            (
+                "nested_ops.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Complement,
+                    expression: Box::new(Node::Expression(Expression::Unary {
+                        operator: UnaryOperator::Negate,
+                        expression: Box::new(Node::Expression(Expression::Constant(3))),
+                    })),
+                }),
+            ),
+            (
+                "parens_2.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Complement,
+                    expression: Box::new(Node::Expression(Expression::Constant(2))),
+                }),
+            ),
+            (
+                "parens_3.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Negate,
+                    expression: Box::new(Node::Expression(Expression::Unary {
+                        operator: UnaryOperator::Negate,
+                        expression: Box::new(Node::Expression(Expression::Constant(4))),
+                    })),
+                }),
+            ),
+            (
+                "parens.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Negate,
+                    expression: Box::new(Node::Expression(Expression::Constant(2))),
+                }),
+            ),
+            (
+                "redundant_parens.c",
+                expected(Expression::Unary {
+                    operator: UnaryOperator::Negate,
+                    expression: Box::new(Node::Expression(Expression::Constant(10))),
+                }),
+            ),
+        ];
+
+        for (file, expected) in tests.into_iter() {
+            let file_path = format!("files/02/{file}");
+            let input = fs::read_to_string(file_path).expect("unable to read file");
+            let tokens = Lexer::new(&input).lex()?;
+            let actual = Parser::new(&tokens).parse()?;
+            assert_eq!(actual, expected);
+        }
+
+        Ok(())
     }
 }
