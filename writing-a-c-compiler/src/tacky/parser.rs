@@ -1,6 +1,6 @@
 use crate::{
     parser::{Expression, Node, Statement},
-    tacky::{TackyInstruction, TackyNode, TackyUnaryOperator, TackyValue},
+    tacky::{TackyBinaryOperator, TackyInstruction, TackyNode, TackyUnaryOperator, TackyValue},
 };
 
 pub struct TackyParser<'a> {
@@ -85,6 +85,33 @@ impl<'a> TackyParser<'a> {
                     return Err(format!("{expression} is not a valid expression"));
                 }
             }
+            Expression::Binary {
+                operator,
+                left,
+                right,
+            } => {
+                if let (Node::Expression(left), Node::Expression(right)) = (&**left, &**right) {
+                    let src_left = self.emit_expression(&left, instructions)?;
+                    let src_right = self.emit_expression(&right, instructions)?;
+                    let dst = {
+                        let tmp = format!("tmp.{}", self.temp_count);
+                        self.temp_count += 1;
+                        TackyValue::Var(tmp)
+                    };
+
+                    let operator = TackyBinaryOperator::try_from(operator)
+                        .expect("unexpected binary operator in TACKY");
+                    instructions.push(TackyInstruction::Binary {
+                        operator,
+                        src1: src_left,
+                        src2: src_right,
+                        dst: dst.clone(),
+                    });
+                    Ok(dst)
+                } else {
+                    return Err(format!("{left} or {right} is not a valid expression"));
+                }
+            }
         }
     }
 }
@@ -96,145 +123,201 @@ mod tests {
     use super::*;
     use crate::Lexer;
     use crate::Parser;
+    use crate::parser::BinaryOperator;
+
+    fn input(body: Node) -> Node {
+        Node::Program {
+            function: Box::new(Node::Function {
+                name: Box::new(Node::Identifier("main".into())),
+                body: Box::new(body),
+            }),
+        }
+    }
+
+    fn expected(instructions: Vec<TackyInstruction>) -> TackyNode {
+        TackyNode::Program {
+            function: Box::new(TackyNode::Function {
+                name: "main".into(),
+                instructions,
+            }),
+        }
+    }
+
+    fn binary(operator: BinaryOperator, left: Expression, right: Expression) -> Expression {
+        Expression::Binary {
+            operator,
+            left: Box::new(Node::Expression(left)),
+            right: Box::new(Node::Expression(right)),
+        }
+    }
+
+    #[test]
+    fn test_bitwise_or() -> Result<(), String> {
+        let ast = input(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinaryOperator::Or,
+                Expression::Constant(3),
+                Expression::Constant(5),
+            )),
+        ))));
+
+        let ast = TackyParser::new(&ast).parse().expect("parsing failed");
+
+        let expected = expected(vec![
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Or,
+                src1: TackyValue::Constant(3),
+                src2: TackyValue::Constant(5),
+                dst: TackyValue::Var("tmp.0".into()),
+            },
+            TackyInstruction::Return(TackyValue::Var("tmp.0".into())),
+        ]);
+
+        assert_eq!(ast, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_bitwise_xor() -> Result<(), String> {
+        let ast = input(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinaryOperator::Xor,
+                Expression::Constant(3),
+                Expression::Constant(5),
+            )),
+        ))));
+
+        let ast = TackyParser::new(&ast).parse().expect("parsing failed");
+
+        let expected = expected(vec![
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::Xor,
+                src1: TackyValue::Constant(3),
+                src2: TackyValue::Constant(5),
+                dst: TackyValue::Var("tmp.0".into()),
+            },
+            TackyInstruction::Return(TackyValue::Var("tmp.0".into())),
+        ]);
+
+        assert_eq!(ast, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_bitwise_lshift() -> Result<(), String> {
+        let ast = input(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinaryOperator::LShift,
+                Expression::Constant(3),
+                Expression::Constant(5),
+            )),
+        ))));
+
+        let ast = TackyParser::new(&ast).parse().expect("parsing failed");
+
+        let expected = expected(vec![
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::LShift,
+                src1: TackyValue::Constant(3),
+                src2: TackyValue::Constant(5),
+                dst: TackyValue::Var("tmp.0".into()),
+            },
+            TackyInstruction::Return(TackyValue::Var("tmp.0".into())),
+        ]);
+
+        assert_eq!(ast, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_bitwise_rshift() -> Result<(), String> {
+        let ast = input(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinaryOperator::RShift,
+                Expression::Constant(3),
+                Expression::Constant(5),
+            )),
+        ))));
+
+        let ast = TackyParser::new(&ast).parse().expect("parsing failed");
+
+        let expected = expected(vec![
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::RShift,
+                src1: TackyValue::Constant(3),
+                src2: TackyValue::Constant(5),
+                dst: TackyValue::Var("tmp.0".into()),
+            },
+            TackyInstruction::Return(TackyValue::Var("tmp.0".into())),
+        ]);
+
+        assert_eq!(ast, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_bitwise_and() -> Result<(), String> {
+        let ast = input(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinaryOperator::And,
+                Expression::Constant(3),
+                Expression::Constant(5),
+            )),
+        ))));
+
+        let ast = TackyParser::new(&ast).parse().expect("parsing failed");
+
+        let expected = expected(vec![
+            TackyInstruction::Binary {
+                operator: TackyBinaryOperator::And,
+                src1: TackyValue::Constant(3),
+                src2: TackyValue::Constant(5),
+                dst: TackyValue::Var("tmp.0".into()),
+            },
+            TackyInstruction::Return(TackyValue::Var("tmp.0".into())),
+        ]);
+
+        assert_eq!(ast, expected);
+
+        Ok(())
+    }
 
     #[test]
     fn test_02() {
-        fn new_complement(src: TackyValue, dst: TackyValue) -> TackyInstruction {
-            TackyInstruction::Unary {
-                operator: TackyUnaryOperator::Complement,
-                src,
-                dst,
-            }
-        }
-
-        fn new_negate(src: TackyValue, dst: TackyValue) -> TackyInstruction {
-            TackyInstruction::Unary {
-                operator: TackyUnaryOperator::Negate,
-                src,
-                dst,
-            }
-        }
-
-        fn new_return(val: TackyValue) -> TackyInstruction {
-            TackyInstruction::Return(val)
-        }
-
-        fn expected(instructions: Vec<TackyInstruction>) -> TackyNode {
-            TackyNode::Program {
-                function: Box::new(TackyNode::Function {
-                    name: "main".into(),
-                    instructions,
-                }),
-            }
+        fn expected(variance: &str) -> String {
+            format!("prog fn main {variance}")
         }
 
         let tests = vec![
             (
                 "bitwise_int_min.c",
-                expected(vec![
-                    new_negate(
-                        TackyValue::Constant(2147483647),
-                        TackyValue::Var("tmp.0".into()),
-                    ),
-                    new_complement(
-                        TackyValue::Var("tmp.0".into()),
-                        TackyValue::Var("tmp.1".into()),
-                    ),
-                    new_return(TackyValue::Var("tmp.1".into())),
-                ]),
+                expected("-2147483647 > tmp.0 ~tmp.0 > tmp.1 ret tmp.1"),
             ),
-            (
-                "bitwise_zero.c",
-                expected(vec![
-                    new_complement(TackyValue::Constant(0), TackyValue::Var("tmp.0".into())),
-                    new_return(TackyValue::Var("tmp.0".into())),
-                ]),
-            ),
-            (
-                "bitwise.c",
-                expected(vec![
-                    new_complement(TackyValue::Constant(12), TackyValue::Var("tmp.0".into())),
-                    new_return(TackyValue::Var("tmp.0".into())),
-                ]),
-            ),
-            (
-                "neg_zero.c",
-                expected(vec![
-                    new_negate(TackyValue::Constant(0), TackyValue::Var("tmp.0".into())),
-                    new_return(TackyValue::Var("tmp.0".into())),
-                ]),
-            ),
-            (
-                "neg.c",
-                expected(vec![
-                    new_negate(TackyValue::Constant(5), TackyValue::Var("tmp.0".into())),
-                    new_return(TackyValue::Var("tmp.0".into())),
-                ]),
-            ),
+            ("bitwise_zero.c", expected("~0 > tmp.0 ret tmp.0")),
+            ("bitwise.c", expected("~12 > tmp.0 ret tmp.0")),
+            ("neg_zero.c", expected("-0 > tmp.0 ret tmp.0")),
+            ("neg.c", expected("-5 > tmp.0 ret tmp.0")),
             (
                 "negate_int_max.c",
-                expected(vec![
-                    new_negate(
-                        TackyValue::Constant(2147483647),
-                        TackyValue::Var("tmp.0".into()),
-                    ),
-                    new_return(TackyValue::Var("tmp.0".into())),
-                ]),
+                expected("-2147483647 > tmp.0 ret tmp.0"),
             ),
             (
                 "nested_ops_2.c",
-                expected(vec![
-                    new_complement(TackyValue::Constant(0), TackyValue::Var("tmp.0".into())),
-                    new_negate(
-                        TackyValue::Var("tmp.0".into()),
-                        TackyValue::Var("tmp.1".into()),
-                    ),
-                    new_return(TackyValue::Var("tmp.1".into())),
-                ]),
+                expected("~0 > tmp.0 -tmp.0 > tmp.1 ret tmp.1"),
             ),
             (
                 "nested_ops.c",
-                expected(vec![
-                    new_negate(TackyValue::Constant(3), TackyValue::Var("tmp.0".into())),
-                    new_complement(
-                        TackyValue::Var("tmp.0".into()),
-                        TackyValue::Var("tmp.1".into()),
-                    ),
-                    new_return(TackyValue::Var("tmp.1".into())),
-                ]),
+                expected("-3 > tmp.0 ~tmp.0 > tmp.1 ret tmp.1"),
             ),
-            (
-                "parens_2.c",
-                expected(vec![
-                    new_complement(TackyValue::Constant(2), TackyValue::Var("tmp.0".into())),
-                    new_return(TackyValue::Var("tmp.0".into())),
-                ]),
-            ),
+            ("parens_2.c", expected("~2 > tmp.0 ret tmp.0")),
             (
                 "parens_3.c",
-                expected(vec![
-                    new_negate(TackyValue::Constant(4), TackyValue::Var("tmp.0".into())),
-                    new_negate(
-                        TackyValue::Var("tmp.0".into()),
-                        TackyValue::Var("tmp.1".into()),
-                    ),
-                    new_return(TackyValue::Var("tmp.1".into())),
-                ]),
+                expected("-4 > tmp.0 -tmp.0 > tmp.1 ret tmp.1"),
             ),
-            (
-                "parens.c",
-                expected(vec![
-                    new_negate(TackyValue::Constant(2), TackyValue::Var("tmp.0".into())),
-                    new_return(TackyValue::Var("tmp.0".into())),
-                ]),
-            ),
-            (
-                "redundant_parens.c",
-                expected(vec![
-                    new_negate(TackyValue::Constant(10), TackyValue::Var("tmp.0".into())),
-                    new_return(TackyValue::Var("tmp.0".into())),
-                ]),
-            ),
+            ("parens.c", expected("-2 > tmp.0 ret tmp.0")),
+            ("redundant_parens.c", expected("-10 > tmp.0 ret tmp.0")),
         ];
 
         for (file, expected) in tests.into_iter() {
@@ -246,7 +329,80 @@ mod tests {
                 .parse()
                 .expect("tacky parsing failed");
 
-            assert_eq!(actual, expected);
+            assert_eq!(actual.to_string(), expected);
         }
+    }
+
+    #[test]
+    fn test_03() -> Result<(), String> {
+        fn expected(variance: &str) -> String {
+            format!("prog fn main {variance}")
+        }
+
+        let tests = vec![
+            ("add.c", expected("+ 1 2 > tmp.0 ret tmp.0")),
+            (
+                "associativity_2.c",
+                expected("/ 6 3 > tmp.0 / tmp.0 2 > tmp.1 ret tmp.1"),
+            ),
+            (
+                "associativity_3.c",
+                expected(
+                    "/ 3 2 > tmp.0 * tmp.0 4 > tmp.1 - 5 4 > tmp.2 + tmp.2 3 > tmp.3 + tmp.1 tmp.3 > tmp.4 ret tmp.4",
+                ),
+            ),
+            (
+                "associativity_and_precedence.c",
+                expected(
+                    "* 5 4 > tmp.0 / tmp.0 2 > tmp.1 + 2 1 > tmp.2 % 3 tmp.2 > tmp.3 - tmp.1 tmp.3 > tmp.4 ret tmp.4",
+                ),
+            ),
+            (
+                "associativity.c",
+                expected("- 1 2 > tmp.0 - tmp.0 3 > tmp.1 ret tmp.1"),
+            ),
+            (
+                "div_neg.c",
+                expected("-12 > tmp.0 / tmp.0 5 > tmp.1 ret tmp.1"),
+            ),
+            ("div.c", expected("/ 4 2 > tmp.0 ret tmp.0")),
+            ("mod.c", expected("% 4 2 > tmp.0 ret tmp.0")),
+            ("mult.c", expected("* 2 3 > tmp.0 ret tmp.0")),
+            (
+                "parens.c",
+                expected("+ 3 4 > tmp.0 * 2 tmp.0 > tmp.1 ret tmp.1"),
+            ),
+            (
+                "precedence.c",
+                expected("* 3 4 > tmp.0 + 2 tmp.0 > tmp.1 ret tmp.1"),
+            ),
+            (
+                "sub_neg.c",
+                expected("-1 > tmp.0 - 2 tmp.0 > tmp.1 ret tmp.1"),
+            ),
+            ("sub.c", expected("- 1 2 > tmp.0 ret tmp.0")),
+            (
+                "unop_add.c",
+                expected("~2 > tmp.0 + tmp.0 3 > tmp.1 ret tmp.1"),
+            ),
+            (
+                "unop_parens.c",
+                expected("+ 1 1 > tmp.0 ~tmp.0 > tmp.1 ret tmp.1"),
+            ),
+        ];
+
+        for (file, expected) in tests.into_iter() {
+            let file_path = format!("files/03/{file}");
+            let input = fs::read_to_string(file_path).expect("unable to read file");
+            let tokens = Lexer::new(&input).lex().expect("lexing failed");
+            let ast = Parser::new(&tokens).parse().expect("parsing failed");
+            let actual = TackyParser::new(&ast)
+                .parse()
+                .expect("tacky parsing failed");
+
+            assert_eq!(actual.to_string(), expected);
+        }
+
+        Ok(())
     }
 }

@@ -29,8 +29,8 @@ fn main() {
         asm_parser.parse().expect("asm parsing failed");
         asm_parser.parse_pseudo().expect("pseudo parsing failed");
         asm_parser
-            .replace_mov()
-            .expect("replacing move instructions failed");
+            .fix_instructions()
+            .expect("fixing instructions failed");
 
         let asm_ast = asm_parser.asm_ast.expect("expected asm_ast to be present");
 

@@ -1,9 +1,11 @@
 use std::mem::discriminant;
 use std::{collections::HashMap, vec};
 
+use crate::asm::ast::AsmBinaryOperator;
+use crate::tacky::TackyBinaryOperator;
 use crate::{
     asm::ast::{AsmNode, AsmUnaryOperator, Instruction, Operand, Register},
-    tacky::{TackyInstruction, TackyNode, TackyUnaryOperator, TackyValue},
+    tacky::{TackyInstruction, TackyNode},
 };
 
 #[derive(Debug)]
@@ -26,14 +28,134 @@ impl<'a> AsmParser<'a> {
 
     pub fn parse(&mut self) -> Result<(), String> {
         if let TackyNode::Program { function } = &self.tacky_ir {
-            let asm_ast = AsmNode::Program {
+            self.asm_ast = Some(AsmNode::Program {
                 function: Box::new(self.to_asm_node(*&function)?),
-            };
-            self.asm_ast = Some(asm_ast);
+            });
             Ok(())
         } else {
             Err(format!("expected Program, got {}", self.tacky_ir))
         }
+    }
+
+    fn to_asm_instructions(
+        &self,
+        instructions: &Vec<TackyInstruction>,
+    ) -> Result<Vec<AsmNode>, String> {
+        let mut result = vec![];
+
+        for instruction in instructions.iter() {
+            match instruction {
+                TackyInstruction::Return(value) => {
+                    let src = Operand::try_from(value)?;
+
+                    result.push(AsmNode::Instruction(Instruction::Mov {
+                        src,
+                        dst: Operand::Register(Register::Ax),
+                    }));
+
+                    result.push(AsmNode::Instruction(Instruction::Ret));
+                }
+                TackyInstruction::Unary { operator, src, dst } => {
+                    let operator = AsmUnaryOperator::try_from(operator)?;
+                    let src = Operand::try_from(src)?;
+                    let dst = Operand::try_from(dst)?;
+
+                    result.push(AsmNode::Instruction(Instruction::Mov {
+                        src,
+                        dst: dst.clone(),
+                    }));
+
+                    result.push(AsmNode::Instruction(Instruction::Unary {
+                        operator,
+                        operand: dst,
+                    }));
+                }
+                TackyInstruction::Binary {
+                    operator,
+                    src1,
+                    src2,
+                    dst,
+                } => match operator {
+                    TackyBinaryOperator::Add
+                    | TackyBinaryOperator::Subtract
+                    | TackyBinaryOperator::Multiply
+                    | TackyBinaryOperator::And
+                    | TackyBinaryOperator::Or
+                    | TackyBinaryOperator::Xor => {
+                        let operator = AsmBinaryOperator::try_from(operator)?;
+                        let src1 = Operand::try_from(src1)?;
+                        let src2 = Operand::try_from(src2)?;
+                        let dst = Operand::try_from(dst)?;
+
+                        result.push(AsmNode::Instruction(Instruction::Mov {
+                            src: src1,
+                            dst: dst.clone(),
+                        }));
+
+                        result.push(AsmNode::Instruction(Instruction::Binary {
+                            operator,
+                            src: src2,
+                            dst,
+                        }));
+                    }
+                    TackyBinaryOperator::LShift | TackyBinaryOperator::RShift => {
+                        let operator = AsmBinaryOperator::try_from(operator)?;
+                        let src1 = Operand::try_from(src1)?;
+                        let src2 = Operand::try_from(src2)?;
+                        let dst = Operand::try_from(dst)?;
+
+                        result.push(AsmNode::Instruction(Instruction::Mov {
+                            src: src1,
+                            dst: dst.clone(),
+                        }));
+
+                        result.push(AsmNode::Instruction(Instruction::Binary {
+                            operator,
+                            src: src2,
+                            dst,
+                        }));
+                    }
+                    TackyBinaryOperator::Divide => {
+                        let src1 = Operand::try_from(src1)?;
+                        let src2 = Operand::try_from(src2)?;
+                        let dst = Operand::try_from(dst)?;
+
+                        result.extend(vec![
+                            AsmNode::Instruction(Instruction::Mov {
+                                src: src1,
+                                dst: Operand::Register(Register::Ax),
+                            }),
+                            AsmNode::Instruction(Instruction::Cdq),
+                            AsmNode::Instruction(Instruction::Idiv(src2)),
+                            AsmNode::Instruction(Instruction::Mov {
+                                src: Operand::Register(Register::Ax),
+                                dst,
+                            }),
+                        ]);
+                    }
+                    TackyBinaryOperator::Remainder => {
+                        let src1 = Operand::try_from(src1)?;
+                        let src2 = Operand::try_from(src2)?;
+                        let dst = Operand::try_from(dst)?;
+
+                        result.extend(vec![
+                            AsmNode::Instruction(Instruction::Mov {
+                                src: src1,
+                                dst: Operand::Register(Register::Ax),
+                            }),
+                            AsmNode::Instruction(Instruction::Cdq),
+                            AsmNode::Instruction(Instruction::Idiv(src2)),
+                            AsmNode::Instruction(Instruction::Mov {
+                                src: Operand::Register(Register::Dx),
+                                dst,
+                            }),
+                        ]);
+                    }
+                },
+            }
+        }
+
+        Ok(result)
     }
 
     pub fn parse_pseudo(&mut self) -> Result<(), String> {
@@ -59,6 +181,19 @@ impl<'a> AsmParser<'a> {
                         *operand = new_operand;
                     }
                 }
+                AsmNode::Instruction(Instruction::Binary { src, dst, .. }) => {
+                    if let Some(new_src) = self.replace_pseudo(src.clone()) {
+                        *src = new_src;
+                    }
+                    if let Some(new_dst) = self.replace_pseudo(dst.clone()) {
+                        *dst = new_dst;
+                    }
+                }
+                AsmNode::Instruction(Instruction::Idiv(operand)) => {
+                    if let Some(new_operand) = self.replace_pseudo(operand.clone()) {
+                        *operand = new_operand;
+                    }
+                }
                 _ => {}
             };
         }
@@ -78,7 +213,7 @@ impl<'a> AsmParser<'a> {
         Ok(())
     }
 
-    pub fn replace_mov(&mut self) -> Result<(), String> {
+    pub fn fix_instructions(&mut self) -> Result<(), String> {
         let mut insts = vec![];
         if let Some(AsmNode::Program { function }) = &mut self.asm_ast {
             if let AsmNode::Function { instructions, .. } = &mut **function {
@@ -102,7 +237,67 @@ impl<'a> AsmParser<'a> {
                             }),
                         ]
                     } else {
-                        vec![node.clone()]
+                        vec![node]
+                    }
+                }
+                AsmNode::Instruction(Instruction::Idiv(constant)) => {
+                    vec![
+                        AsmNode::Instruction(Instruction::Mov {
+                            src: constant,
+                            dst: Operand::Register(Register::R10),
+                        }),
+                        AsmNode::Instruction(Instruction::Idiv(Operand::Register(Register::R10))),
+                    ]
+                }
+                AsmNode::Instruction(Instruction::Binary { operator, src, dst }) => {
+                    match operator {
+                        AsmBinaryOperator::Add
+                        | AsmBinaryOperator::Sub
+                        | AsmBinaryOperator::And
+                        | AsmBinaryOperator::Or
+                        | AsmBinaryOperator::Xor => {
+                            vec![
+                                AsmNode::Instruction(Instruction::Mov {
+                                    src,
+                                    dst: Operand::Register(Register::R10),
+                                }),
+                                AsmNode::Instruction(Instruction::Binary {
+                                    operator,
+                                    src: Operand::Register(Register::R10),
+                                    dst,
+                                }),
+                            ]
+                        }
+                        AsmBinaryOperator::LShift | AsmBinaryOperator::RShift => {
+                            vec![
+                                AsmNode::Instruction(Instruction::Mov {
+                                    src,
+                                    dst: Operand::Register(Register::Cx),
+                                }),
+                                AsmNode::Instruction(Instruction::Binary {
+                                    operator,
+                                    src: Operand::Register(Register::Cl),
+                                    dst,
+                                }),
+                            ]
+                        }
+                        AsmBinaryOperator::Imul => {
+                            vec![
+                                AsmNode::Instruction(Instruction::Mov {
+                                    src: dst.clone(),
+                                    dst: Operand::Register(Register::R11),
+                                }),
+                                AsmNode::Instruction(Instruction::Binary {
+                                    operator,
+                                    src,
+                                    dst: Operand::Register(Register::R11),
+                                }),
+                                AsmNode::Instruction(Instruction::Mov {
+                                    src: Operand::Register(Register::R11),
+                                    dst,
+                                }),
+                            ]
+                        }
                     }
                 }
                 _ => vec![node],
@@ -146,53 +341,6 @@ impl<'a> AsmParser<'a> {
             _ => Err(format!("unknown tacky node to parse to ASM node {}", node)),
         }
     }
-
-    fn to_asm_instructions(
-        &self,
-        instructions: &Vec<TackyInstruction>,
-    ) -> Result<Vec<AsmNode>, String> {
-        let mut result = vec![];
-        for instruction in instructions.iter() {
-            match instruction {
-                TackyInstruction::Return(value) => {
-                    let mov = AsmNode::Instruction(Instruction::Mov {
-                        src: self.to_asm_operand(&value)?,
-                        dst: Operand::Register(Register::Ax),
-                    });
-                    result.push(mov);
-                    let ret = AsmNode::Instruction(Instruction::Ret);
-                    result.push(ret);
-                }
-                TackyInstruction::Unary { operator, src, dst } => {
-                    let src = self.to_asm_operand(&src)?;
-                    let dst = self.to_asm_operand(&dst)?;
-                    let mov = AsmNode::Instruction(Instruction::Mov {
-                        src,
-                        dst: dst.clone(),
-                    });
-                    result.push(mov);
-                    let operator = match operator {
-                        TackyUnaryOperator::Complement => AsmUnaryOperator::Not,
-                        TackyUnaryOperator::Negate => AsmUnaryOperator::Neg,
-                    };
-                    let unary = AsmNode::Instruction(Instruction::Unary {
-                        operator,
-                        operand: dst,
-                    });
-                    result.push(unary);
-                }
-            }
-        }
-
-        Ok(result)
-    }
-
-    fn to_asm_operand(&self, value: &TackyValue) -> Result<Operand, String> {
-        match value {
-            TackyValue::Constant(constant) => Ok(Operand::Imm(*constant)),
-            TackyValue::Var(var) => Ok(Operand::Pseudo(var.clone())),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -204,14 +352,18 @@ mod tests {
 
     #[test]
     fn test_01() -> Result<(), String> {
+        fn expected(variance: &str) -> String {
+            format!("fn(main, {variance}, ret)")
+        }
+
         let tests = vec![
-            ("multi_digit.c", "fn(main, 100->ax, ret)"),
-            ("newlines.c", "fn(main, 0->ax, ret)"),
-            ("no_newlines.c", "fn(main, 0->ax, ret)"),
-            ("return_0.c", "fn(main, 0->ax, ret)"),
-            ("return_2.c", "fn(main, 2->ax, ret)"),
-            ("spaces.c", "fn(main, 0->ax, ret)"),
-            ("tabs.c", "fn(main, 0->ax, ret)"),
+            ("multi_digit.c", expected("100->%eax")),
+            ("newlines.c", expected("0->%eax")),
+            ("no_newlines.c", expected("0->%eax")),
+            ("return_0.c", expected("0->%eax")),
+            ("return_2.c", expected("2->%eax")),
+            ("spaces.c", expected("0->%eax")),
+            ("tabs.c", expected("0->%eax")),
         ];
 
         for (file, expected) in tests.into_iter() {
@@ -237,39 +389,40 @@ mod tests {
 
     #[test]
     fn test_02_psuedos() -> Result<(), String> {
+        fn expected(variance: &str) -> String {
+            format!("fn(main, {variance}, ret)")
+        }
+
         let tests = vec![
             (
                 "bitwise_int_min.c",
-                "fn(main, 2147483647->tmp.0, -tmp.0, tmp.0->tmp.1, ~tmp.1, tmp.1->ax, ret)",
+                expected("2147483647->tmp.0, -tmp.0, tmp.0->tmp.1, ~tmp.1, tmp.1->%eax"),
             ),
-            (
-                "bitwise_zero.c",
-                "fn(main, 0->tmp.0, ~tmp.0, tmp.0->ax, ret)",
-            ),
-            ("bitwise.c", "fn(main, 12->tmp.0, ~tmp.0, tmp.0->ax, ret)"),
-            ("neg_zero.c", "fn(main, 0->tmp.0, -tmp.0, tmp.0->ax, ret)"),
-            ("neg.c", "fn(main, 5->tmp.0, -tmp.0, tmp.0->ax, ret)"),
+            ("bitwise_zero.c", expected("0->tmp.0, ~tmp.0, tmp.0->%eax")),
+            ("bitwise.c", expected("12->tmp.0, ~tmp.0, tmp.0->%eax")),
+            ("neg_zero.c", expected("0->tmp.0, -tmp.0, tmp.0->%eax")),
+            ("neg.c", expected("5->tmp.0, -tmp.0, tmp.0->%eax")),
             (
                 "negate_int_max.c",
-                "fn(main, 2147483647->tmp.0, -tmp.0, tmp.0->ax, ret)",
+                expected("2147483647->tmp.0, -tmp.0, tmp.0->%eax"),
             ),
             (
                 "nested_ops_2.c",
-                "fn(main, 0->tmp.0, ~tmp.0, tmp.0->tmp.1, -tmp.1, tmp.1->ax, ret)",
+                expected("0->tmp.0, ~tmp.0, tmp.0->tmp.1, -tmp.1, tmp.1->%eax"),
             ),
             (
                 "nested_ops.c",
-                "fn(main, 3->tmp.0, -tmp.0, tmp.0->tmp.1, ~tmp.1, tmp.1->ax, ret)",
+                expected("3->tmp.0, -tmp.0, tmp.0->tmp.1, ~tmp.1, tmp.1->%eax"),
             ),
-            ("parens_2.c", "fn(main, 2->tmp.0, ~tmp.0, tmp.0->ax, ret)"),
+            ("parens_2.c", expected("2->tmp.0, ~tmp.0, tmp.0->%eax")),
             (
                 "parens_3.c",
-                "fn(main, 4->tmp.0, -tmp.0, tmp.0->tmp.1, -tmp.1, tmp.1->ax, ret)",
+                expected("4->tmp.0, -tmp.0, tmp.0->tmp.1, -tmp.1, tmp.1->%eax"),
             ),
-            ("parens.c", "fn(main, 2->tmp.0, -tmp.0, tmp.0->ax, ret)"),
+            ("parens.c", expected("2->tmp.0, -tmp.0, tmp.0->%eax")),
             (
                 "redundant_parens.c",
-                "fn(main, 10->tmp.0, -tmp.0, tmp.0->ax, ret)",
+                expected("10->tmp.0, -tmp.0, tmp.0->%eax"),
             ),
         ];
 
@@ -291,40 +444,38 @@ mod tests {
 
     #[test]
     fn test_02_replaced_pseudos() -> Result<(), String> {
+        fn expected(stack_size: i8, variance: &str) -> String {
+            format!("fn(main, alloc {stack_size}, {variance}, ret)")
+        }
+
         let tests = vec![
             (
                 "bitwise_int_min.c",
-                "fn(main, alloc 8, 2147483647->-4, --4, -4->-8, ~-8, -8->ax, ret)",
+                expected(8, "2147483647->-4, --4, -4->-8, ~-8, -8->%eax"),
             ),
-            (
-                "bitwise_zero.c",
-                "fn(main, alloc 4, 0->-4, ~-4, -4->ax, ret)",
-            ),
-            ("bitwise.c", "fn(main, alloc 4, 12->-4, ~-4, -4->ax, ret)"),
-            ("neg_zero.c", "fn(main, alloc 4, 0->-4, --4, -4->ax, ret)"),
-            ("neg.c", "fn(main, alloc 4, 5->-4, --4, -4->ax, ret)"),
+            ("bitwise_zero.c", expected(4, "0->-4, ~-4, -4->%eax")),
+            ("bitwise.c", expected(4, "12->-4, ~-4, -4->%eax")),
+            ("neg_zero.c", expected(4, "0->-4, --4, -4->%eax")),
+            ("neg.c", expected(4, "5->-4, --4, -4->%eax")),
             (
                 "negate_int_max.c",
-                "fn(main, alloc 4, 2147483647->-4, --4, -4->ax, ret)",
+                expected(4, "2147483647->-4, --4, -4->%eax"),
             ),
             (
                 "nested_ops_2.c",
-                "fn(main, alloc 8, 0->-4, ~-4, -4->-8, --8, -8->ax, ret)",
+                expected(8, "0->-4, ~-4, -4->-8, --8, -8->%eax"),
             ),
             (
                 "nested_ops.c",
-                "fn(main, alloc 8, 3->-4, --4, -4->-8, ~-8, -8->ax, ret)",
+                expected(8, "3->-4, --4, -4->-8, ~-8, -8->%eax"),
             ),
-            ("parens_2.c", "fn(main, alloc 4, 2->-4, ~-4, -4->ax, ret)"),
+            ("parens_2.c", expected(4, "2->-4, ~-4, -4->%eax")),
             (
                 "parens_3.c",
-                "fn(main, alloc 8, 4->-4, --4, -4->-8, --8, -8->ax, ret)",
+                expected(8, "4->-4, --4, -4->-8, --8, -8->%eax"),
             ),
-            ("parens.c", "fn(main, alloc 4, 2->-4, --4, -4->ax, ret)"),
-            (
-                "redundant_parens.c",
-                "fn(main, alloc 4, 10->-4, --4, -4->ax, ret)",
-            ),
+            ("parens.c", expected(4, "2->-4, --4, -4->%eax")),
+            ("redundant_parens.c", expected(4, "10->-4, --4, -4->%eax")),
         ];
 
         for (file, expected) in tests.into_iter() {
@@ -346,15 +497,15 @@ mod tests {
     }
 
     #[test]
-    fn test_replaced_mov() -> Result<(), String> {
+    fn test_02_fix_instructions() -> Result<(), String> {
         let tests = vec![
             (
                 "nested_ops_2.c",
-                "fn(main, alloc 8, 0->-4, ~-4, -4->r10, r10->-8, --8, -8->ax, ret)",
+                "fn(main, alloc 8, 0->-4, ~-4, -4->%r10d, %r10d->-8, --8, -8->%eax, ret)",
             ),
             (
                 "nested_ops.c",
-                "fn(main, alloc 8, 3->-4, --4, -4->r10, r10->-8, ~-8, -8->ax, ret)",
+                "fn(main, alloc 8, 3->-4, --4, -4->%r10d, %r10d->-8, ~-8, -8->%eax, ret)",
             ),
         ];
 
@@ -367,7 +518,7 @@ mod tests {
             let mut asm_parser = AsmParser::new(&tacky_ir);
             asm_parser.parse()?;
             asm_parser.parse_pseudo()?;
-            asm_parser.replace_mov()?;
+            asm_parser.fix_instructions()?;
 
             assert_eq!(
                 asm_parser.asm_ast.expect("no asm_ast present").to_string(),
@@ -378,20 +529,76 @@ mod tests {
     }
 
     #[test]
-    fn test_alloc_stack() -> Result<(), String> {
+    fn test_03() -> Result<(), String> {
+        fn expected(variance: &str, stack_size: i8) -> String {
+            format!("fn(main, alloc {stack_size}, {variance}, ret)")
+        }
+
         let tests = vec![
+            ("add.c", expected("1->-4, + 2 -4, -4->%eax", 4)),
             (
-                "nested_ops_2.c",
-                "fn(main, alloc 8, 0->-4, ~-4, -4->r10, r10->-8, --8, -8->ax, ret)",
+                "associativity_2.c",
+                expected(
+                    "6->%eax, cdq, / 3, %eax->-4, -4->%eax, cdq, / 2, %eax->-8, -8->%eax",
+                    8,
+                ),
             ),
             (
-                "bitwise_zero.c",
-                "fn(main, alloc 4, 0->-4, ~-4, -4->ax, ret)",
+                "associativity_3.c",
+                expected(
+                    "3->%eax, cdq, / 2, %eax->-4, -4->-8, * 4 -8, 5->-12, - 4 -12, -12->-16, + 3 -16, -8->-20, + -16 -20, -20->%eax",
+                    20,
+                ),
+            ),
+            (
+                "associativity_and_precedence.c",
+                expected(
+                    "5->-4, * 4 -4, -4->%eax, cdq, / 2, %eax->-8, 2->-12, + 1 -12, 3->%eax, cdq, / -12, %edx->-16, -8->-20, - -16 -20, -20->%eax",
+                    20,
+                ),
+            ),
+            (
+                "associativity.c",
+                expected("1->-4, - 2 -4, -4->-8, - 3 -8, -8->%eax", 8),
+            ),
+            (
+                "div_neg.c",
+                expected("12->-4, --4, -4->%eax, cdq, / 5, %eax->-8, -8->%eax", 8),
+            ),
+            (
+                "div.c",
+                expected("4->%eax, cdq, / 2, %eax->-4, -4->%eax", 4),
+            ),
+            (
+                "mod.c",
+                expected("4->%eax, cdq, / 2, %edx->-4, -4->%eax", 4),
+            ),
+            ("mult.c", expected("2->-4, * 3 -4, -4->%eax", 4)),
+            (
+                "parens.c",
+                expected("3->-4, + 4 -4, 2->-8, * -4 -8, -8->%eax", 8),
+            ),
+            (
+                "precedence.c",
+                expected("3->-4, * 4 -4, 2->-8, + -4 -8, -8->%eax", 8),
+            ),
+            (
+                "sub_neg.c",
+                expected("1->-4, --4, 2->-8, - -4 -8, -8->%eax", 8),
+            ),
+            ("sub.c", expected("1->-4, - 2 -4, -4->%eax", 4)),
+            (
+                "unop_add.c",
+                expected("2->-4, ~-4, -4->-8, + 3 -8, -8->%eax", 8),
+            ),
+            (
+                "unop_parens.c",
+                expected("1->-4, + 1 -4, -4->-8, ~-8, -8->%eax", 8),
             ),
         ];
 
         for (file, expected) in tests.into_iter() {
-            let file_path = format!("files/02/{file}");
+            let file_path = format!("files/03/{file}");
             let input = fs::read_to_string(file_path).expect("unable to read file");
             let tokens = Lexer::new(&input).lex()?;
             let ast = Parser::new(&tokens).parse()?;
@@ -399,7 +606,121 @@ mod tests {
             let mut asm_parser = AsmParser::new(&tacky_ir);
             asm_parser.parse()?;
             asm_parser.parse_pseudo()?;
-            asm_parser.replace_mov()?;
+
+            assert_eq!(
+                asm_parser.asm_ast.expect("no asm_ast present").to_string(),
+                expected,
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_fix_instructions() -> Result<(), String> {
+        fn expected(variance: &str, stack_size: i8) -> String {
+            format!("fn(main, alloc {stack_size}, {variance}, ret)")
+        }
+
+        let tests = vec![
+            (
+                "add.c",
+                expected("1->-4, 2->%r10d, + %r10d -4, -4->%eax", 4),
+            ),
+            (
+                "associativity_2.c",
+                expected(
+                    "6->%eax, cdq, 3->%r10d, / %r10d, %eax->-4, -4->%eax, cdq, 2->%r10d, / %r10d, %eax->-8, -8->%eax",
+                    8,
+                ),
+            ),
+            (
+                "associativity_3.c",
+                expected(
+                    "3->%eax, cdq, 2->%r10d, / %r10d, %eax->-4, -4->%r10d, %r10d->-8, -8->%r11d, * 4 %r11d, %r11d->-8, 5->-12, 4->%r10d, - %r10d -12, -12->%r10d, %r10d->-16, 3->%r10d, + %r10d -16, -8->%r10d, %r10d->-20, -16->%r10d, + %r10d -20, -20->%eax",
+                    20,
+                ),
+            ),
+            (
+                "associativity_and_precedence.c",
+                expected(
+                    "5->-4, -4->%r11d, * 4 %r11d, %r11d->-4, -4->%eax, cdq, 2->%r10d, / %r10d, %eax->-8, 2->-12, 1->%r10d, + %r10d -12, 3->%eax, cdq, -12->%r10d, / %r10d, %edx->-16, -8->%r10d, %r10d->-20, -16->%r10d, - %r10d -20, -20->%eax",
+                    20,
+                ),
+            ),
+            (
+                "associativity.c",
+                expected(
+                    "1->-4, 2->%r10d, - %r10d -4, -4->%r10d, %r10d->-8, 3->%r10d, - %r10d -8, -8->%eax",
+                    8,
+                ),
+            ),
+            (
+                "div_neg.c",
+                expected(
+                    "12->-4, --4, -4->%eax, cdq, 5->%r10d, / %r10d, %eax->-8, -8->%eax",
+                    8,
+                ),
+            ),
+            (
+                "div.c",
+                expected("4->%eax, cdq, 2->%r10d, / %r10d, %eax->-4, -4->%eax", 4),
+            ),
+            (
+                "mod.c",
+                expected("4->%eax, cdq, 2->%r10d, / %r10d, %edx->-4, -4->%eax", 4),
+            ),
+            (
+                "mult.c",
+                expected("2->-4, -4->%r11d, * 3 %r11d, %r11d->-4, -4->%eax", 4),
+            ),
+            (
+                "parens.c",
+                expected(
+                    "3->-4, 4->%r10d, + %r10d -4, 2->-8, -8->%r11d, * -4 %r11d, %r11d->-8, -8->%eax",
+                    8,
+                ),
+            ),
+            (
+                "precedence.c",
+                expected(
+                    "3->-4, -4->%r11d, * 4 %r11d, %r11d->-4, 2->-8, -4->%r10d, + %r10d -8, -8->%eax",
+                    8,
+                ),
+            ),
+            (
+                "sub_neg.c",
+                expected("1->-4, --4, 2->-8, -4->%r10d, - %r10d -8, -8->%eax", 8),
+            ),
+            (
+                "sub.c",
+                expected("1->-4, 2->%r10d, - %r10d -4, -4->%eax", 4),
+            ),
+            (
+                "unop_add.c",
+                expected(
+                    "2->-4, ~-4, -4->%r10d, %r10d->-8, 3->%r10d, + %r10d -8, -8->%eax",
+                    8,
+                ),
+            ),
+            (
+                "unop_parens.c",
+                expected(
+                    "1->-4, 1->%r10d, + %r10d -4, -4->%r10d, %r10d->-8, ~-8, -8->%eax",
+                    8,
+                ),
+            ),
+        ];
+
+        for (file, expected) in tests.into_iter() {
+            let file_path = format!("files/03/{file}");
+            let input = fs::read_to_string(file_path).expect("unable to read file");
+            let tokens = Lexer::new(&input).lex()?;
+            let ast = Parser::new(&tokens).parse()?;
+            let tacky_ir = TackyParser::new(&ast).parse()?;
+            let mut asm_parser = AsmParser::new(&tacky_ir);
+            asm_parser.parse()?;
+            asm_parser.parse_pseudo()?;
+            asm_parser.fix_instructions()?;
 
             assert_eq!(
                 asm_parser.asm_ast.expect("no asm_ast present").to_string(),

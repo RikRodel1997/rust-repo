@@ -15,6 +15,15 @@ pub enum Token {
     Tilde,
     Hyphen,
     DoubleHyphen,
+    Plus,
+    Star,
+    ForwardSlash,
+    Modulo,
+    Ampersand,
+    Pipe,
+    Carrot,
+    LShift,
+    RShift,
 }
 
 impl Display for Token {
@@ -33,6 +42,15 @@ impl Display for Token {
             Self::Tilde => write!(f, "~"),
             Self::Hyphen => write!(f, "-"),
             Self::DoubleHyphen => write!(f, "--"),
+            Self::Plus => write!(f, "+"),
+            Self::Star => write!(f, "*"),
+            Self::ForwardSlash => write!(f, "/"),
+            Self::Modulo => write!(f, "%"),
+            Self::Ampersand => write!(f, "&"),
+            Self::Pipe => write!(f, "|"),
+            Self::Carrot => write!(f, "^"),
+            Self::LShift => write!(f, "<<"),
+            Self::RShift => write!(f, ">>"),
         }
     }
 }

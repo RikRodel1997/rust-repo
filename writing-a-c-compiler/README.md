@@ -10,8 +10,11 @@ The ASDL is a programming language agnostic way to describe an AST that will be 
 program = Program(function)
 function = Function(ident name, stmt body)
 stmt = Return(exp)
-exp = Constant(int) | Unary(unary_operator, exp)
+exp = Constant(int) 
+    | Unary(unary_operator, exp)
+    | Binary(binary_operator, exp, exp)
 unary_operator = Complement | Negate
+binary_operator = Add | Subtract | Multiply | Divide | Remainder
 ```
 
 ## Formal Grammar
@@ -21,8 +24,10 @@ The formal grammar describes a more strict ruleset for the grammar of a particul
 <program> = <function>
 <function> = "int" <ident> "(" "void" ")" "{" <stmt> "}"
 <stmt> = "return" <exp> ";"
-<exp> = <int> | <unop> <exp> | "(" <exp> ")"
+<exp> = <factor> | <exp> <binop> <exp>
+<factor> = <int> | <unop> <factor> | "(" <exp> ")"
 <unop> = "-" | "~"
+<binop> = "-" | "+" | "*" | "/" | "%"
 <ident> = ? An identifier token ?
 <int> = ? A constant token ?
 ```
@@ -32,9 +37,12 @@ The formal grammar describes a more strict ruleset for the grammar of a particul
 ```
 program = Program(function)
 function = Function(identifier, 1 instruction* body)
-instruction = Return(val) | Unary(unop, val src, val dst)
+instruction = Return(val) 
+              | Unary(unop, val src, val dst)
+              | Binary(binop, val src1, val src2, val dst)
 val = Constant(int) | Var(identifier)
 unop = Complement | Negate
+binop = Add | Subtract | Multiply | Divide | Remainder
 ```
 
 ## Assembly ASDL
@@ -44,9 +52,13 @@ program = Program(function)
 function = Function(identifier name, instruction* instructions)
 instruction = Mov(operand src, operand dst) 
             | Unary(unop, operand)
+            | Binary(binop, operand, operand)
+            | Idiv(operand)
+            | Cdq
             | AllocateStack(int)
             | Ret
 unop = Neg | Not
+binop = Add | Sub | Mult
 operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Stack(int)
-reg = AX | R10
+reg = AX | DX | R10 | R11
 ```

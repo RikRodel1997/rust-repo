@@ -41,7 +41,7 @@ impl<'a> Parser<'a> {
 
         let expr = match token {
             Token::Return => Ok(Node::Statement(Statement::Return(Box::new(
-                self.parse_expression()?,
+                self.parse_expression(0)?,
             )))),
             _ => Err(format!("unknown token in statement {}", token)),
         };
@@ -51,24 +51,42 @@ impl<'a> Parser<'a> {
         expr
     }
 
-    fn parse_expression(&mut self) -> Result<Node, String> {
-        let token = self
-            .tokens
-            .next()
-            .expect("expected a token in expression, found None");
+    fn parse_expression(&mut self, min_precedence: i8) -> Result<Node, String> {
+        let mut left = Box::new(self.parse_factor()?);
+
+        while let Some(token) = self.tokens.peek() {
+            let token_precedence = Self::precedence(token);
+            if token_precedence > min_precedence {
+                let op = self.tokens.next().unwrap();
+
+                left = Box::new(Node::Expression(Expression::Binary {
+                    operator: BinaryOperator::try_from(op)?,
+                    left,
+                    right: Box::new(self.parse_expression(token_precedence + 1)?),
+                }));
+            } else {
+                break;
+            }
+        }
+
+        Ok(*left)
+    }
+
+    fn parse_factor(&mut self) -> Result<Node, String> {
+        let token = self.tokens.next().expect("expected a token in factor");
 
         match token {
             Token::Constant(constant) => Ok(Node::Expression(Expression::Constant(*constant))),
             Token::Hyphen | Token::Tilde => {
                 let operator = UnaryOperator::try_from(token)?;
-                let expression = Box::new(self.parse_expression()?);
+                let expression = Box::new(self.parse_factor()?);
                 Ok(Node::Expression(Expression::Unary {
                     operator,
                     expression,
                 }))
             }
             Token::OpenParen => {
-                let expression = self.parse_expression()?;
+                let expression = self.parse_expression(0)?;
                 self.expect(Token::CloseParen)?;
                 Ok(expression)
             }
@@ -88,6 +106,18 @@ impl<'a> Parser<'a> {
             Ok(())
         }
     }
+
+    fn precedence(token: &'a Token) -> i8 {
+        match token {
+            Token::Star | Token::ForwardSlash | Token::Modulo => 100,
+            Token::Plus | Token::Hyphen => 95,
+            Token::LShift | Token::RShift => 85,
+            Token::Ampersand => 80,
+            Token::Carrot => 75,
+            Token::Pipe => 70,
+            _ => -1,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -97,7 +127,22 @@ mod tests {
     use super::*;
     use crate::Lexer;
 
-    fn program_node(body: Node) -> Node {
+    fn input(tokens: Vec<Token>) -> Vec<Token> {
+        let mut result = vec![
+            Token::Int,
+            Token::Identifier("main".into()),
+            Token::OpenParen,
+            Token::Void,
+            Token::CloseParen,
+            Token::OpenBrace,
+            Token::Return,
+        ];
+        result.extend(tokens);
+        result.extend(vec![Token::SemiColon, Token::CloseBrace]);
+        result
+    }
+
+    fn expected(body: Node) -> Node {
         Node::Program {
             function: Box::new(Node::Function {
                 name: Box::new(Node::Identifier("main".into())),
@@ -106,22 +151,113 @@ mod tests {
         }
     }
 
+    fn binary(operator: BinaryOperator, left: Expression, right: Expression) -> Expression {
+        Expression::Binary {
+            operator,
+            left: Box::new(Node::Expression(left)),
+            right: Box::new(Node::Expression(right)),
+        }
+    }
+
+    #[test]
+    fn test_bitwise_or() -> Result<(), String> {
+        let tokens = input(vec![Token::Constant(3), Token::Pipe, Token::Constant(5)]);
+        let ast = Parser::new(&tokens).parse().expect("parsing failed");
+
+        let expected = expected(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinaryOperator::Or,
+                Expression::Constant(3),
+                Expression::Constant(5),
+            )),
+        ))));
+
+        assert_eq!(ast, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_bitwise_precedence() -> Result<(), String> {
+        let tokens = input(vec![
+            Token::Constant(3),
+            Token::Carrot,
+            Token::Constant(5),
+            Token::Ampersand,
+            Token::Constant(12),
+            Token::LShift,
+            Token::Constant(100),
+        ]);
+        let ast = Parser::new(&tokens).parse().expect("parsing failed");
+
+        let expected = expected(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinaryOperator::Xor,
+                Expression::Constant(3),
+                binary(
+                    BinaryOperator::And,
+                    Expression::Constant(5),
+                    binary(
+                        BinaryOperator::LShift,
+                        Expression::Constant(12),
+                        Expression::Constant(100),
+                    ),
+                ),
+            )),
+        ))));
+
+        assert_eq!(ast, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_bitwise_arithmetic_precedence() -> Result<(), String> {
+        let tokens = input(vec![
+            Token::Constant(3),
+            Token::Plus,
+            Token::OpenParen,
+            Token::Tilde,
+            Token::Constant(5),
+            Token::Pipe,
+            Token::Constant(12),
+            Token::CloseParen,
+            Token::LShift,
+            Token::Constant(100),
+        ]);
+        let ast = Parser::new(&tokens).parse().expect("parsing failed");
+
+        let expected = expected(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinaryOperator::LShift,
+                binary(
+                    BinaryOperator::Add,
+                    Expression::Constant(3),
+                    binary(
+                        BinaryOperator::Or,
+                        Expression::Unary {
+                            operator: UnaryOperator::Complement,
+                            expression: Box::new(Node::Expression(Expression::Constant(5))),
+                        },
+                        Expression::Constant(12),
+                    ),
+                ),
+                Expression::Constant(100),
+            )),
+        ))));
+
+        assert_eq!(ast, expected);
+        Ok(())
+    }
+
     #[test]
     fn test_01() -> Result<(), String> {
-        fn expected(value: i64) -> Node {
-            program_node(Node::Statement(Statement::Return(Box::new(
-                Node::Expression(Expression::Constant(value)),
-            ))))
-        }
-
         let tests = vec![
-            ("multi_digit.c", expected(100)),
-            ("newlines.c", expected(0)),
-            ("no_newlines.c", expected(0)),
-            ("return_0.c", expected(0)),
-            ("return_2.c", expected(2)),
-            ("spaces.c", expected(0)),
-            ("tabs.c", expected(0)),
+            ("multi_digit.c", "prog fn main ret 100"),
+            ("newlines.c", "prog fn main ret 0"),
+            ("no_newlines.c", "prog fn main ret 0"),
+            ("return_0.c", "prog fn main ret 0"),
+            ("return_2.c", "prog fn main ret 2"),
+            ("spaces.c", "prog fn main ret 0"),
+            ("tabs.c", "prog fn main ret 0"),
         ];
 
         for (file, expected) in tests.into_iter() {
@@ -129,7 +265,8 @@ mod tests {
             let input = fs::read_to_string(file_path).expect("unable to read file");
             let tokens = Lexer::new(&input).lex()?;
             let actual = Parser::new(&tokens).parse()?;
-            assert_eq!(actual, expected);
+
+            assert_eq!(actual.to_string(), expected);
         }
 
         Ok(())
@@ -137,109 +274,19 @@ mod tests {
 
     #[test]
     fn test_02() -> Result<(), String> {
-        fn expected(value: Expression) -> Node {
-            program_node(Node::Statement(Statement::Return(Box::new(
-                Node::Expression(value),
-            ))))
-        }
-
         let tests = vec![
-            (
-                "bitwise_int_min.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Complement,
-                    expression: Box::new(Node::Expression(Expression::Unary {
-                        operator: UnaryOperator::Negate,
-                        expression: Box::new(Node::Expression(Expression::Constant(2147483647))),
-                    })),
-                }),
-            ),
-            (
-                "bitwise_zero.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Complement,
-                    expression: Box::new(Node::Expression(Expression::Constant(0))),
-                }),
-            ),
-            (
-                "bitwise.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Complement,
-                    expression: Box::new(Node::Expression(Expression::Constant(12))),
-                }),
-            ),
-            (
-                "neg_zero.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Negate,
-                    expression: Box::new(Node::Expression(Expression::Constant(0))),
-                }),
-            ),
-            (
-                "neg.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Negate,
-                    expression: Box::new(Node::Expression(Expression::Constant(5))),
-                }),
-            ),
-            (
-                "negate_int_max.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Negate,
-                    expression: Box::new(Node::Expression(Expression::Constant(2147483647))),
-                }),
-            ),
-            (
-                "nested_ops_2.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Negate,
-                    expression: Box::new(Node::Expression(Expression::Unary {
-                        operator: UnaryOperator::Complement,
-                        expression: Box::new(Node::Expression(Expression::Constant(0))),
-                    })),
-                }),
-            ),
-            (
-                "nested_ops.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Complement,
-                    expression: Box::new(Node::Expression(Expression::Unary {
-                        operator: UnaryOperator::Negate,
-                        expression: Box::new(Node::Expression(Expression::Constant(3))),
-                    })),
-                }),
-            ),
-            (
-                "parens_2.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Complement,
-                    expression: Box::new(Node::Expression(Expression::Constant(2))),
-                }),
-            ),
-            (
-                "parens_3.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Negate,
-                    expression: Box::new(Node::Expression(Expression::Unary {
-                        operator: UnaryOperator::Negate,
-                        expression: Box::new(Node::Expression(Expression::Constant(4))),
-                    })),
-                }),
-            ),
-            (
-                "parens.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Negate,
-                    expression: Box::new(Node::Expression(Expression::Constant(2))),
-                }),
-            ),
-            (
-                "redundant_parens.c",
-                expected(Expression::Unary {
-                    operator: UnaryOperator::Negate,
-                    expression: Box::new(Node::Expression(Expression::Constant(10))),
-                }),
-            ),
+            ("bitwise_int_min.c", "prog fn main ret ~-2147483647"),
+            ("bitwise_zero.c", "prog fn main ret ~0"),
+            ("bitwise.c", "prog fn main ret ~12"),
+            ("neg_zero.c", "prog fn main ret -0"),
+            ("neg.c", "prog fn main ret -5"),
+            ("negate_int_max.c", "prog fn main ret -2147483647"),
+            ("nested_ops_2.c", "prog fn main ret -~0"),
+            ("nested_ops.c", "prog fn main ret ~-3"),
+            ("parens_2.c", "prog fn main ret ~2"),
+            ("parens_3.c", "prog fn main ret --4"),
+            ("parens.c", "prog fn main ret -2"),
+            ("redundant_parens.c", "prog fn main ret -10"),
         ];
 
         for (file, expected) in tests.into_iter() {
@@ -247,7 +294,85 @@ mod tests {
             let input = fs::read_to_string(file_path).expect("unable to read file");
             let tokens = Lexer::new(&input).lex()?;
             let actual = Parser::new(&tokens).parse()?;
-            assert_eq!(actual, expected);
+
+            assert_eq!(actual.to_string(), expected);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_simple() -> Result<(), String> {
+        let expected = Node::Program {
+            function: Box::new(Node::Function {
+                name: Box::new(Node::Identifier("main".into())),
+                body: Box::new(Node::Statement(Statement::Return(Box::new(
+                    Node::Expression(binary(
+                        BinaryOperator::Subtract,
+                        binary(
+                            BinaryOperator::Multiply,
+                            Expression::Constant(1),
+                            Expression::Constant(2),
+                        ),
+                        binary(
+                            BinaryOperator::Multiply,
+                            Expression::Constant(3),
+                            binary(
+                                BinaryOperator::Add,
+                                Expression::Constant(4),
+                                Expression::Constant(5),
+                            ),
+                        ),
+                    )),
+                )))),
+            }),
+        };
+
+        let tokens = Lexer::new("int main(void) { return 1 * 2 - 3 * (4 + 5); }").lex()?;
+        let actual = Parser::new(&tokens).parse()?;
+
+        assert_eq!(actual, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_03() -> Result<(), String> {
+        fn expected(variance: &str) -> String {
+            format!("prog fn main ret ({variance})")
+        }
+
+        let tests = vec![
+            ("add.c", expected("+ 1 2")),
+            ("associativity_2.c", expected("/ (/ 6 3) 2")),
+            (
+                "associativity_3.c",
+                expected("+ (* (/ 3 2) 4) (+ (- 5 4) 3)"),
+            ),
+            (
+                "associativity_and_precedence.c",
+                expected("- (/ (* 5 4) 2) (% 3 (+ 2 1))"),
+            ),
+            ("associativity.c", expected("- (- 1 2) 3")),
+            ("div_neg.c", expected("/ -12 5")),
+            ("div.c", expected("/ 4 2")),
+            ("mod.c", expected("% 4 2")),
+            ("mult.c", expected("* 2 3")),
+            ("parens.c", expected("* 2 (+ 3 4)")),
+            ("precedence.c", expected("+ 2 (* 3 4)")),
+            ("sub_neg.c", expected("- 2 -1")),
+            ("sub.c", expected("- 1 2")),
+            ("unop_add.c", expected("+ ~2 3")),
+            ("unop_parens.c", "prog fn main ret ~(+ 1 1)".into()),
+        ];
+
+        for (file, expected) in tests.into_iter() {
+            let file_path = format!("files/03/{file}");
+            let input = fs::read_to_string(file_path).expect("unable to read file");
+            let tokens = Lexer::new(&input).lex()?;
+            let actual = Parser::new(&tokens).parse()?;
+
+            assert_eq!(actual.to_string(), expected);
         }
 
         Ok(())

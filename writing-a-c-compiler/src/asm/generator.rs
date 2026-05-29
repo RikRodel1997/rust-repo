@@ -237,7 +237,7 @@ mod tests {
             let mut asm_parser = AsmParser::new(&tacky_ir);
             asm_parser.parse()?;
             asm_parser.parse_pseudo()?;
-            asm_parser.replace_mov()?;
+            asm_parser.fix_instructions()?;
 
             let asm_ast = asm_parser.asm_ast.expect("expected asm_ast to be present");
             let actual = AsmGenerator::new(&asm_ast).generate()?;
@@ -245,6 +245,43 @@ mod tests {
             assert_eq!(actual, expected);
             generate_file(&file_path, &actual);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_03() -> Result<(), String> {
+        fn generate_file(file_path: &str, buf: &str) -> () {
+            let path = format!("{}.s", file_path.split(".c").nth(0).unwrap());
+            let mut file = File::create(path).unwrap();
+            file.write_all(buf.as_bytes()).unwrap();
+        }
+
+        let entries = fs::read_dir("files/03")
+            .expect("test")
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("c"))
+            .collect::<Vec<_>>();
+
+        for file_path in entries.iter() {
+            let input = fs::read_to_string(file_path.clone()).expect("unable to read file");
+            let tokens = Lexer::new(&input).lex()?;
+            let ast = Parser::new(&tokens).parse()?;
+            let tacky_ir = TackyParser::new(&ast).parse()?;
+            println!("file_path {:?}", file_path);
+            println!("tacky_ir {tacky_ir}");
+
+            let mut asm_parser = AsmParser::new(&tacky_ir);
+            asm_parser.parse()?;
+            asm_parser.parse_pseudo()?;
+            asm_parser.fix_instructions()?;
+
+            let asm_ast = asm_parser.asm_ast.expect("expected asm_ast to be present");
+            let actual = AsmGenerator::new(&asm_ast).generate()?;
+
+            generate_file(&file_path.to_str().unwrap(), &actual);
+        }
+
         Ok(())
     }
 }
