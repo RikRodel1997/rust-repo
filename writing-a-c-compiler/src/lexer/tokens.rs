@@ -24,6 +24,16 @@ pub enum Token {
     Carrot,
     LShift,
     RShift,
+    Bang,
+    Equal,
+    DoubleAmpersand,
+    DoublePipe,
+    DoubleEqual,
+    BangEqual,
+    LessThan,
+    GreaterThan,
+    LessThanOrEqual,
+    GreaterThanOrEqual,
 }
 
 impl Display for Token {
@@ -51,6 +61,16 @@ impl Display for Token {
             Self::Carrot => write!(f, "^"),
             Self::LShift => write!(f, "<<"),
             Self::RShift => write!(f, ">>"),
+            Self::Bang => write!(f, "!"),
+            Self::Equal => write!(f, "="),
+            Self::DoubleAmpersand => write!(f, "&&"),
+            Self::DoublePipe => write!(f, "||"),
+            Self::DoubleEqual => write!(f, "=="),
+            Self::BangEqual => write!(f, "!="),
+            Self::LessThan => write!(f, "<"),
+            Self::GreaterThan => write!(f, ">"),
+            Self::LessThanOrEqual => write!(f, "<="),
+            Self::GreaterThanOrEqual => write!(f, ">="),
         }
     }
 }

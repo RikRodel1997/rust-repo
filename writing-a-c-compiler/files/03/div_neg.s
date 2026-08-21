@@ -14,4 +14,3 @@ main:
 	movq	%rbp, %rsp
 	popq	%rbp
 	ret
-.section .note.GNU-stack,"",@progbits

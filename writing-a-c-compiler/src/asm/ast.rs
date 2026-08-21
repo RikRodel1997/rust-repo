@@ -9,9 +9,8 @@ pub enum AsmNode {
     },
     Function {
         name: String,
-        instructions: Vec<AsmNode>,
+        instructions: Vec<Instruction>,
     },
-    Instruction(Instruction),
 }
 
 impl Display for AsmNode {
@@ -25,7 +24,6 @@ impl Display for AsmNode {
                 }
                 write!(f, ")")
             }
-            AsmNode::Instruction(instruction) => write!(f, "{}", instruction),
         }
     }
 }
@@ -238,22 +236,22 @@ impl Display for Operand {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Register {
-    Ax,
-    Cx,
-    Dx,
-    R10,
-    R11,
+    Eax,
+    Ecx,
+    Edx,
+    R10d,
+    R11d,
     Cl, // bitwise left and right shift
 }
 
 impl Display for Register {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self {
-            Register::Ax => write!(f, "%eax"),
-            Register::Cx => write!(f, "%ecx"),
-            Register::Dx => write!(f, "%edx"),
-            Register::R10 => write!(f, "%r10d"),
-            Register::R11 => write!(f, "%r11d"),
+            Register::Eax => write!(f, "%eax"),
+            Register::Ecx => write!(f, "%ecx"),
+            Register::Edx => write!(f, "%edx"),
+            Register::R10d => write!(f, "%r10d"),
+            Register::R11d => write!(f, "%r11d"),
             Register::Cl => write!(f, "%cl"),
         }
     }

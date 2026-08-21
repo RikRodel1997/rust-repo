@@ -14,7 +14,7 @@ exp = Constant(int)
     | Unary(unary_operator, exp)
     | Binary(binary_operator, exp, exp)
 unary_operator = Complement | Negate
-binary_operator = Add | Subtract | Multiply | Divide | Remainder
+binary_operator = Add | Subtract | Multiply | Divide | Remainder | And | Or | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
 ```
 
 ## Formal Grammar
@@ -62,3 +62,16 @@ binop = Add | Sub | Mult
 operand = Imm(int) | Reg(reg) | Pseudo(identifier) | Stack(int)
 reg = AX | DX | R10 | R11
 ```
+
+## Dependencies
+Some noteworthy dependencies specifically for the testing:
+
+Rust (`cargo llvm-cov nextest`):
+- [cargo-nextest](https://nexte.st/)
+- [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov)
+
+It's recommended to install these for faster test execution and line coverage using `cargo llvm-cov nextest`
+
+Python (`uv run pytest -n 4`):
+- [pytest](https://docs.pytest.org/en/stable/)
+- [pytest-xdist](https://pytest-xdist.readthedocs.io/en/latest/)

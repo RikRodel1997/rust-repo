@@ -93,13 +93,11 @@ impl Display for TackyUnaryOperator {
     }
 }
 
-impl TryFrom<&UnaryOperator> for TackyUnaryOperator {
-    type Error = String;
-
-    fn try_from(value: &UnaryOperator) -> std::result::Result<Self, Self::Error> {
+impl From<&UnaryOperator> for TackyUnaryOperator {
+    fn from(value: &UnaryOperator) -> Self {
         match value {
-            UnaryOperator::Complement => Ok(Self::Complement),
-            UnaryOperator::Negate => Ok(Self::Negate),
+            UnaryOperator::Complement => Self::Complement,
+            UnaryOperator::Negate => Self::Negate,
         }
     }
 }
@@ -135,21 +133,19 @@ impl Display for TackyBinaryOperator {
     }
 }
 
-impl TryFrom<&BinaryOperator> for TackyBinaryOperator {
-    type Error = String;
-
-    fn try_from(operator: &BinaryOperator) -> std::result::Result<Self, Self::Error> {
+impl From<&BinaryOperator> for TackyBinaryOperator {
+    fn from(operator: &BinaryOperator) -> Self {
         match operator {
-            BinaryOperator::Add => Ok(TackyBinaryOperator::Add),
-            BinaryOperator::Subtract => Ok(TackyBinaryOperator::Subtract),
-            BinaryOperator::Multiply => Ok(TackyBinaryOperator::Multiply),
-            BinaryOperator::Divide => Ok(TackyBinaryOperator::Divide),
-            BinaryOperator::Remainder => Ok(TackyBinaryOperator::Remainder),
-            BinaryOperator::LShift => Ok(TackyBinaryOperator::LShift),
-            BinaryOperator::RShift => Ok(TackyBinaryOperator::RShift),
-            BinaryOperator::And => Ok(TackyBinaryOperator::And),
-            BinaryOperator::Or => Ok(TackyBinaryOperator::Or),
-            BinaryOperator::Xor => Ok(TackyBinaryOperator::Xor),
+            BinaryOperator::Add => TackyBinaryOperator::Add,
+            BinaryOperator::Subtract => TackyBinaryOperator::Subtract,
+            BinaryOperator::Multiply => TackyBinaryOperator::Multiply,
+            BinaryOperator::Divide => TackyBinaryOperator::Divide,
+            BinaryOperator::Remainder => TackyBinaryOperator::Remainder,
+            BinaryOperator::LShift => TackyBinaryOperator::LShift,
+            BinaryOperator::RShift => TackyBinaryOperator::RShift,
+            BinaryOperator::And => TackyBinaryOperator::And,
+            BinaryOperator::Or => TackyBinaryOperator::Or,
+            BinaryOperator::Xor => TackyBinaryOperator::Xor,
         }
     }
 }

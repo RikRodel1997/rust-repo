@@ -3,6 +3,8 @@ mod lexer;
 mod parser;
 mod tacky;
 
+use std::fs::File;
+use std::io::Write;
 use std::{env, fs};
 
 use crate::asm::generator::AsmGenerator;
@@ -11,8 +13,10 @@ use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::tacky::TackyParser;
 
-fn main() {
+fn main() -> Result<(), String> {
     let args = env::args().collect::<Vec<String>>();
+
+    let output_file = output_arg(&args);
 
     if args.len() > 1 {
         let file_path = &args[1];
@@ -34,8 +38,27 @@ fn main() {
 
         let asm_ast = asm_parser.asm_ast.expect("expected asm_ast to be present");
 
-        let _asm_code = AsmGenerator::new(&asm_ast)
+        let asm_code = AsmGenerator::new(&asm_ast)
             .generate()
             .expect("asm generation failed");
+
+        match output_file {
+            Some(output_path) => {
+                let mut file = File::create(output_path).unwrap();
+                file.write_all(asm_code.as_bytes()).unwrap();
+            }
+            None => {}
+        }
     }
+
+    Ok(())
+}
+
+fn output_arg(args: &[String]) -> Option<String> {
+    if args.len() == 3 {
+        let output_path = &args[2];
+        return Some(output_path.clone());
+    }
+
+    None
 }

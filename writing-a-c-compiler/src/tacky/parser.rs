@@ -73,10 +73,8 @@ impl<'a> TackyParser<'a> {
                         TackyValue::Var(tmp)
                     };
 
-                    let operator = TackyUnaryOperator::try_from(operator)
-                        .expect("unexpected unary operator in TACKY");
                     instructions.push(TackyInstruction::Unary {
-                        operator,
+                        operator: TackyUnaryOperator::from(operator),
                         src: inner_value,
                         dst: dst.clone(),
                     });
@@ -99,10 +97,8 @@ impl<'a> TackyParser<'a> {
                         TackyValue::Var(tmp)
                     };
 
-                    let operator = TackyBinaryOperator::try_from(operator)
-                        .expect("unexpected binary operator in TACKY");
                     instructions.push(TackyInstruction::Binary {
-                        operator,
+                        operator: TackyBinaryOperator::from(operator),
                         src1: src_left,
                         src2: src_right,
                         dst: dst.clone(),
@@ -118,11 +114,7 @@ impl<'a> TackyParser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use super::*;
-    use crate::Lexer;
-    use crate::Parser;
     use crate::parser::BinaryOperator;
 
     fn input(body: Node) -> Node {
@@ -280,128 +272,6 @@ mod tests {
         ]);
 
         assert_eq!(ast, expected);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_02() {
-        fn expected(variance: &str) -> String {
-            format!("prog fn main {variance}")
-        }
-
-        let tests = vec![
-            (
-                "bitwise_int_min.c",
-                expected("-2147483647 > tmp.0 ~tmp.0 > tmp.1 ret tmp.1"),
-            ),
-            ("bitwise_zero.c", expected("~0 > tmp.0 ret tmp.0")),
-            ("bitwise.c", expected("~12 > tmp.0 ret tmp.0")),
-            ("neg_zero.c", expected("-0 > tmp.0 ret tmp.0")),
-            ("neg.c", expected("-5 > tmp.0 ret tmp.0")),
-            (
-                "negate_int_max.c",
-                expected("-2147483647 > tmp.0 ret tmp.0"),
-            ),
-            (
-                "nested_ops_2.c",
-                expected("~0 > tmp.0 -tmp.0 > tmp.1 ret tmp.1"),
-            ),
-            (
-                "nested_ops.c",
-                expected("-3 > tmp.0 ~tmp.0 > tmp.1 ret tmp.1"),
-            ),
-            ("parens_2.c", expected("~2 > tmp.0 ret tmp.0")),
-            (
-                "parens_3.c",
-                expected("-4 > tmp.0 -tmp.0 > tmp.1 ret tmp.1"),
-            ),
-            ("parens.c", expected("-2 > tmp.0 ret tmp.0")),
-            ("redundant_parens.c", expected("-10 > tmp.0 ret tmp.0")),
-        ];
-
-        for (file, expected) in tests.into_iter() {
-            let file_path = format!("files/02/{file}");
-            let input = fs::read_to_string(file_path).expect("unable to read file");
-            let tokens = Lexer::new(&input).lex().expect("lexing failed");
-            let ast = Parser::new(&tokens).parse().expect("parsing failed");
-            let actual = TackyParser::new(&ast)
-                .parse()
-                .expect("tacky parsing failed");
-
-            assert_eq!(actual.to_string(), expected);
-        }
-    }
-
-    #[test]
-    fn test_03() -> Result<(), String> {
-        fn expected(variance: &str) -> String {
-            format!("prog fn main {variance}")
-        }
-
-        let tests = vec![
-            ("add.c", expected("+ 1 2 > tmp.0 ret tmp.0")),
-            (
-                "associativity_2.c",
-                expected("/ 6 3 > tmp.0 / tmp.0 2 > tmp.1 ret tmp.1"),
-            ),
-            (
-                "associativity_3.c",
-                expected(
-                    "/ 3 2 > tmp.0 * tmp.0 4 > tmp.1 - 5 4 > tmp.2 + tmp.2 3 > tmp.3 + tmp.1 tmp.3 > tmp.4 ret tmp.4",
-                ),
-            ),
-            (
-                "associativity_and_precedence.c",
-                expected(
-                    "* 5 4 > tmp.0 / tmp.0 2 > tmp.1 + 2 1 > tmp.2 % 3 tmp.2 > tmp.3 - tmp.1 tmp.3 > tmp.4 ret tmp.4",
-                ),
-            ),
-            (
-                "associativity.c",
-                expected("- 1 2 > tmp.0 - tmp.0 3 > tmp.1 ret tmp.1"),
-            ),
-            (
-                "div_neg.c",
-                expected("-12 > tmp.0 / tmp.0 5 > tmp.1 ret tmp.1"),
-            ),
-            ("div.c", expected("/ 4 2 > tmp.0 ret tmp.0")),
-            ("mod.c", expected("% 4 2 > tmp.0 ret tmp.0")),
-            ("mult.c", expected("* 2 3 > tmp.0 ret tmp.0")),
-            (
-                "parens.c",
-                expected("+ 3 4 > tmp.0 * 2 tmp.0 > tmp.1 ret tmp.1"),
-            ),
-            (
-                "precedence.c",
-                expected("* 3 4 > tmp.0 + 2 tmp.0 > tmp.1 ret tmp.1"),
-            ),
-            (
-                "sub_neg.c",
-                expected("-1 > tmp.0 - 2 tmp.0 > tmp.1 ret tmp.1"),
-            ),
-            ("sub.c", expected("- 1 2 > tmp.0 ret tmp.0")),
-            (
-                "unop_add.c",
-                expected("~2 > tmp.0 + tmp.0 3 > tmp.1 ret tmp.1"),
-            ),
-            (
-                "unop_parens.c",
-                expected("+ 1 1 > tmp.0 ~tmp.0 > tmp.1 ret tmp.1"),
-            ),
-        ];
-
-        for (file, expected) in tests.into_iter() {
-            let file_path = format!("files/03/{file}");
-            let input = fs::read_to_string(file_path).expect("unable to read file");
-            let tokens = Lexer::new(&input).lex().expect("lexing failed");
-            let ast = Parser::new(&tokens).parse().expect("parsing failed");
-            let actual = TackyParser::new(&ast)
-                .parse()
-                .expect("tacky parsing failed");
-
-            assert_eq!(actual.to_string(), expected);
-        }
 
         Ok(())
     }

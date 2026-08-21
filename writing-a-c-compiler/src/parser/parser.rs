@@ -122,10 +122,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use super::*;
-    use crate::Lexer;
 
     fn input(tokens: Vec<Token>) -> Vec<Token> {
         let mut result = vec![
@@ -157,6 +154,53 @@ mod tests {
             left: Box::new(Node::Expression(left)),
             right: Box::new(Node::Expression(right)),
         }
+    }
+
+    #[test]
+    fn test_nested_binary() -> Result<(), String> {
+        let tokens = input(vec![
+            Token::OpenParen,
+            Token::Constant(6),
+            Token::Plus,
+            Token::Constant(4),
+            Token::CloseParen,
+            Token::Star,
+            Token::Constant(3),
+            Token::Hyphen,
+            Token::OpenParen,
+            Token::Constant(5),
+            Token::Plus,
+            Token::Constant(1),
+            Token::CloseParen,
+            Token::SemiColon,
+            Token::CloseBrace,
+        ]);
+
+        let ast = Parser::new(&tokens).parse().expect("parsing failed");
+
+        let expected = expected(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinaryOperator::Subtract,
+                binary(
+                    BinaryOperator::Multiply,
+                    binary(
+                        BinaryOperator::Add,
+                        Expression::Constant(6),
+                        Expression::Constant(4),
+                    ),
+                    Expression::Constant(3),
+                ),
+                binary(
+                    BinaryOperator::Add,
+                    Expression::Constant(5),
+                    Expression::Constant(1),
+                ),
+            )),
+        ))));
+
+        assert_eq!(ast, expected);
+
+        Ok(())
     }
 
     #[test]
@@ -245,136 +289,6 @@ mod tests {
         ))));
 
         assert_eq!(ast, expected);
-        Ok(())
-    }
-
-    #[test]
-    fn test_01() -> Result<(), String> {
-        let tests = vec![
-            ("multi_digit.c", "prog fn main ret 100"),
-            ("newlines.c", "prog fn main ret 0"),
-            ("no_newlines.c", "prog fn main ret 0"),
-            ("return_0.c", "prog fn main ret 0"),
-            ("return_2.c", "prog fn main ret 2"),
-            ("spaces.c", "prog fn main ret 0"),
-            ("tabs.c", "prog fn main ret 0"),
-        ];
-
-        for (file, expected) in tests.into_iter() {
-            let file_path = format!("files/01/{file}");
-            let input = fs::read_to_string(file_path).expect("unable to read file");
-            let tokens = Lexer::new(&input).lex()?;
-            let actual = Parser::new(&tokens).parse()?;
-
-            assert_eq!(actual.to_string(), expected);
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_02() -> Result<(), String> {
-        let tests = vec![
-            ("bitwise_int_min.c", "prog fn main ret ~-2147483647"),
-            ("bitwise_zero.c", "prog fn main ret ~0"),
-            ("bitwise.c", "prog fn main ret ~12"),
-            ("neg_zero.c", "prog fn main ret -0"),
-            ("neg.c", "prog fn main ret -5"),
-            ("negate_int_max.c", "prog fn main ret -2147483647"),
-            ("nested_ops_2.c", "prog fn main ret -~0"),
-            ("nested_ops.c", "prog fn main ret ~-3"),
-            ("parens_2.c", "prog fn main ret ~2"),
-            ("parens_3.c", "prog fn main ret --4"),
-            ("parens.c", "prog fn main ret -2"),
-            ("redundant_parens.c", "prog fn main ret -10"),
-        ];
-
-        for (file, expected) in tests.into_iter() {
-            let file_path = format!("files/02/{file}");
-            let input = fs::read_to_string(file_path).expect("unable to read file");
-            let tokens = Lexer::new(&input).lex()?;
-            let actual = Parser::new(&tokens).parse()?;
-
-            assert_eq!(actual.to_string(), expected);
-        }
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_03_simple() -> Result<(), String> {
-        let expected = Node::Program {
-            function: Box::new(Node::Function {
-                name: Box::new(Node::Identifier("main".into())),
-                body: Box::new(Node::Statement(Statement::Return(Box::new(
-                    Node::Expression(binary(
-                        BinaryOperator::Subtract,
-                        binary(
-                            BinaryOperator::Multiply,
-                            Expression::Constant(1),
-                            Expression::Constant(2),
-                        ),
-                        binary(
-                            BinaryOperator::Multiply,
-                            Expression::Constant(3),
-                            binary(
-                                BinaryOperator::Add,
-                                Expression::Constant(4),
-                                Expression::Constant(5),
-                            ),
-                        ),
-                    )),
-                )))),
-            }),
-        };
-
-        let tokens = Lexer::new("int main(void) { return 1 * 2 - 3 * (4 + 5); }").lex()?;
-        let actual = Parser::new(&tokens).parse()?;
-
-        assert_eq!(actual, expected);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_03() -> Result<(), String> {
-        fn expected(variance: &str) -> String {
-            format!("prog fn main ret ({variance})")
-        }
-
-        let tests = vec![
-            ("add.c", expected("+ 1 2")),
-            ("associativity_2.c", expected("/ (/ 6 3) 2")),
-            (
-                "associativity_3.c",
-                expected("+ (* (/ 3 2) 4) (+ (- 5 4) 3)"),
-            ),
-            (
-                "associativity_and_precedence.c",
-                expected("- (/ (* 5 4) 2) (% 3 (+ 2 1))"),
-            ),
-            ("associativity.c", expected("- (- 1 2) 3")),
-            ("div_neg.c", expected("/ -12 5")),
-            ("div.c", expected("/ 4 2")),
-            ("mod.c", expected("% 4 2")),
-            ("mult.c", expected("* 2 3")),
-            ("parens.c", expected("* 2 (+ 3 4)")),
-            ("precedence.c", expected("+ 2 (* 3 4)")),
-            ("sub_neg.c", expected("- 2 -1")),
-            ("sub.c", expected("- 1 2")),
-            ("unop_add.c", expected("+ ~2 3")),
-            ("unop_parens.c", "prog fn main ret ~(+ 1 1)".into()),
-        ];
-
-        for (file, expected) in tests.into_iter() {
-            let file_path = format!("files/03/{file}");
-            let input = fs::read_to_string(file_path).expect("unable to read file");
-            let tokens = Lexer::new(&input).lex()?;
-            let actual = Parser::new(&tokens).parse()?;
-
-            assert_eq!(actual.to_string(), expected);
-        }
-
         Ok(())
     }
 }

@@ -1,4 +1,6 @@
 **/target
 .env
-writing-a-c-compiler/**.s
-writing-a-c-compiler/return_2
+**/__pycache__/**
+**/.pytest_cache
+**/*.out
+**/a.exe
