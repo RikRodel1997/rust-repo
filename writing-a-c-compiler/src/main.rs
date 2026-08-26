@@ -16,6 +16,8 @@ use crate::tacky::TackyParser;
 fn main() -> Result<(), String> {
     let args = env::args().collect::<Vec<String>>();
 
+    println!("{:?}", args);
+
     let output_file = output_arg(&args);
 
     if args.len() > 1 {

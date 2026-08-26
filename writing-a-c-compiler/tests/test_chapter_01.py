@@ -1,7 +1,7 @@
 import pytest
-from runner import TestRunner
+from runner import Runner
 
-runner = TestRunner("files/01")
+runner = Runner("files/01")
 
 execution_tests = {
     "multi_digit.c": 100,

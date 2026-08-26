@@ -32,7 +32,7 @@ impl<'a> AsmGenerator<'a> {
                 asm_code.push_str("\tmovq\t%rsp, %rbp\n");
                 let mut instructions = instructions.iter();
                 while let Some(instruction) = instructions.next() {
-                    asm_code.push_str(&format!("\t{}\n", instruction.to_asm()));
+                    asm_code.push_str(&instruction.to_asm());
                 }
                 Ok(asm_code)
             }
@@ -51,7 +51,85 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_asm_generation() -> Result<(), String> {
+    fn test_cmp_generation() -> Result<(), String> {
+        let input = "int main(void) { return 1 && 2; }";
+        let tokens = Lexer::new(&input).lex()?;
+        let ast = Parser::new(&tokens).parse()?;
+        let tacky_ir = TackyParser::new(&ast).parse()?;
+        let mut asm_parser = AsmParser::new(&tacky_ir);
+        asm_parser.parse()?;
+        asm_parser.parse_pseudo()?;
+        asm_parser.fix_instructions()?;
+
+        let asm_code = AsmGenerator::new(&asm_parser.asm_ast.unwrap()).generate()?;
+
+        assert_eq!(
+            asm_code,
+            ".globl main
+main:
+	push	%rbp
+	movq	%rsp, %rbp
+	subq	$4, %rsp
+	movl	$1, %r11d
+	cmpl	$0, %r11d
+	je	.Ltmp_false.0
+	movl	$2, %r11d
+	cmpl	$0, %r11d
+	je	.Ltmp_false.0
+	movl	$1, -4(%rbp)
+	jmp	.Ltmp_end.0
+.Ltmp_false.0:
+	movl	$0, -4(%rbp)
+.Ltmp_end.0:
+	movl	-4(%rbp), %eax
+	movq	%rbp, %rsp
+	popq	%rbp
+	ret
+"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_less_than_or_equal() -> Result<(), String> {
+        let input = "int main(void) { return 1 <= -1; }";
+        let tokens = Lexer::new(&input).lex()?;
+        let ast = Parser::new(&tokens).parse()?;
+        let tacky_ir = TackyParser::new(&ast).parse()?;
+
+        let mut asm_parser = AsmParser::new(&tacky_ir);
+        asm_parser.parse()?;
+        asm_parser.parse_pseudo()?;
+        asm_parser.fix_instructions()?;
+
+        let asm_code = AsmGenerator::new(&asm_parser.asm_ast.unwrap()).generate()?;
+
+        assert_eq!(
+            asm_code,
+            ".globl main
+main:
+	push	%rbp
+	movq	%rsp, %rbp
+	subq	$8, %rsp
+	movl	$1, -4(%rbp)
+	negl	-4(%rbp)
+	movl	$1, %r11d
+	cmpl	-4(%rbp), %r11d
+	movl	$0, -8(%rbp)
+	setle	-8(%rbp)
+	movl	-8(%rbp), %eax
+	movq	%rbp, %rsp
+	popq	%rbp
+	ret
+"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_binary_generation() -> Result<(), String> {
         let input = "int main(void) { return 1 + 2; }";
         let tokens = Lexer::new(&input).lex()?;
         let ast = Parser::new(&tokens).parse()?;

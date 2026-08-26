@@ -1,0 +1,45 @@
+import pytest
+from runner import Runner
+
+runner = Runner("files/04")
+
+execution_tests = {
+    "le_true.c": 2,
+    "ne_true.c": 1,
+    "ge_false.c": 0,
+    "not_zero.c": 1,
+    "precedence_2.c": 0,
+    "ge_true.c": 2,
+    "eq_precedence.c": 1,
+    "eq_false.c": 0,
+    "or_short_circuit.c": 1,
+    "not_sum.c": 1,
+    "precedence_4.c": 1,
+    "and_short_circuit.c": 0,
+    "precedence_3.c": 0,
+    "compare_arithmetic_results.c": 1,
+    "and_false.c": 0,
+    "precedence_5.c": 1,
+    "associativity.c": 1,
+    "gt_true.c": 1,
+    "lt_false.c": 0,
+    "or_true.c": 3,
+    "or_false.c": 0,
+    "eq_true.c": 1,
+    "ne_false.c": 0,
+    "multi_short_circuit.c": 0,
+    "gt_false.c": 0,
+    "operate_on_booleans.c": 0,
+    "not.c": 0,
+    "le_false.c": 0,
+    "nested_ops.c": 0,
+    "precedence.c": 1,
+    "not_sum_2.c": 0,
+    "and_true.c": 1,
+    "lt_true.c": 1,
+}
+
+
+@pytest.mark.parametrize("input,exit_code", [test for test in execution_tests.items()])
+def test_chapter_04(input: str, exit_code: int):
+    runner.test_asm_execution(input, exit_code)

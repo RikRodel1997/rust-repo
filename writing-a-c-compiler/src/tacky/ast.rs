@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 
-use crate::parser::{BinaryOperator, UnaryOperator};
+use crate::parser::{BinOp, UnOp};
 
 #[derive(Debug, PartialEq)]
 pub enum TackyNode {
@@ -32,16 +32,32 @@ impl Display for TackyNode {
 pub enum TackyInstruction {
     Return(TackyValue),
     Unary {
-        operator: TackyUnaryOperator,
+        operator: TackyUnOp,
         src: TackyValue,
         dst: TackyValue,
     },
     Binary {
-        operator: TackyBinaryOperator,
+        operator: TackyBinOp,
         src1: TackyValue,
         src2: TackyValue,
         dst: TackyValue,
     },
+    Copy {
+        src: TackyValue,
+        dst: TackyValue,
+    },
+    Jump {
+        target: String,
+    },
+    JumpIfZero {
+        condition: TackyValue,
+        target: String,
+    },
+    JumpIfNotZero {
+        condition: TackyValue,
+        target: String,
+    },
+    Label(String),
 }
 
 impl Display for TackyInstruction {
@@ -49,7 +65,7 @@ impl Display for TackyInstruction {
         match &self {
             TackyInstruction::Return(value) => write!(f, "ret {}", value),
             TackyInstruction::Unary { operator, src, dst } => {
-                write!(f, "{}{} > {}", operator, src, dst)
+                write!(f, "{operator}{src} > {dst}")
             }
             TackyInstruction::Binary {
                 operator,
@@ -57,8 +73,17 @@ impl Display for TackyInstruction {
                 src2,
                 dst,
             } => {
-                write!(f, "{} {} {} > {}", operator, src1, src2, dst)
+                write!(f, "{operator} {src1} {src2} > {dst}")
             }
+            TackyInstruction::Copy { src, dst } => write!(f, "{src} > {dst}"),
+            TackyInstruction::Jump { target } => write!(f, "{target}"),
+            TackyInstruction::JumpIfZero { condition, target } => {
+                write!(f, "{condition} {target}")
+            }
+            TackyInstruction::JumpIfNotZero { condition, target } => {
+                write!(f, "{condition} {target}")
+            }
+            TackyInstruction::Label(label) => write!(f, "{label}"),
         }
     }
 }
@@ -79,31 +104,34 @@ impl Display for TackyValue {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum TackyUnaryOperator {
+pub enum TackyUnOp {
     Complement,
     Negate,
+    Not,
 }
 
-impl Display for TackyUnaryOperator {
+impl Display for TackyUnOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Complement => write!(f, "~"),
             Self::Negate => write!(f, "-"),
+            Self::Not => write!(f, "!"),
         }
     }
 }
 
-impl From<&UnaryOperator> for TackyUnaryOperator {
-    fn from(value: &UnaryOperator) -> Self {
+impl From<&UnOp> for TackyUnOp {
+    fn from(value: &UnOp) -> Self {
         match value {
-            UnaryOperator::Complement => Self::Complement,
-            UnaryOperator::Negate => Self::Negate,
+            UnOp::Complement => Self::Complement,
+            UnOp::Negate => Self::Negate,
+            UnOp::Not => Self::Not,
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub enum TackyBinaryOperator {
+pub enum TackyBinOp {
     Add,
     Subtract,
     Multiply,
@@ -114,9 +142,17 @@ pub enum TackyBinaryOperator {
     And,
     Or,
     Xor,
+    DoubleAmpersand,
+    DoublePipe,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
 }
 
-impl Display for TackyBinaryOperator {
+impl Display for TackyBinOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Add => write!(f, "+"),
@@ -129,23 +165,39 @@ impl Display for TackyBinaryOperator {
             Self::And => write!(f, "&"),
             Self::Or => write!(f, "|"),
             Self::Xor => write!(f, "^"),
+            Self::DoubleAmpersand => write!(f, "&&"),
+            Self::DoublePipe => write!(f, "||"),
+            Self::Equal => write!(f, "=="),
+            Self::NotEqual => write!(f, "!="),
+            Self::LessThan => write!(f, "<"),
+            Self::LessThanOrEqual => write!(f, ">"),
+            Self::GreaterThan => write!(f, "<="),
+            Self::GreaterThanOrEqual => write!(f, ">="),
         }
     }
 }
 
-impl From<&BinaryOperator> for TackyBinaryOperator {
-    fn from(operator: &BinaryOperator) -> Self {
+impl From<&BinOp> for TackyBinOp {
+    fn from(operator: &BinOp) -> Self {
         match operator {
-            BinaryOperator::Add => TackyBinaryOperator::Add,
-            BinaryOperator::Subtract => TackyBinaryOperator::Subtract,
-            BinaryOperator::Multiply => TackyBinaryOperator::Multiply,
-            BinaryOperator::Divide => TackyBinaryOperator::Divide,
-            BinaryOperator::Remainder => TackyBinaryOperator::Remainder,
-            BinaryOperator::LShift => TackyBinaryOperator::LShift,
-            BinaryOperator::RShift => TackyBinaryOperator::RShift,
-            BinaryOperator::And => TackyBinaryOperator::And,
-            BinaryOperator::Or => TackyBinaryOperator::Or,
-            BinaryOperator::Xor => TackyBinaryOperator::Xor,
+            BinOp::Add => TackyBinOp::Add,
+            BinOp::Subtract => TackyBinOp::Subtract,
+            BinOp::Multiply => TackyBinOp::Multiply,
+            BinOp::Divide => TackyBinOp::Divide,
+            BinOp::Remainder => TackyBinOp::Remainder,
+            BinOp::LShift => TackyBinOp::LShift,
+            BinOp::RShift => TackyBinOp::RShift,
+            BinOp::And => TackyBinOp::And,
+            BinOp::Or => TackyBinOp::Or,
+            BinOp::Xor => TackyBinOp::Xor,
+            BinOp::DoubleAmpersand => TackyBinOp::DoubleAmpersand,
+            BinOp::DoublePipe => TackyBinOp::DoublePipe,
+            BinOp::Equal => TackyBinOp::Equal,
+            BinOp::NotEqual => TackyBinOp::NotEqual,
+            BinOp::LessThan => TackyBinOp::LessThan,
+            BinOp::LessThanOrEqual => TackyBinOp::LessThanOrEqual,
+            BinOp::GreaterThan => TackyBinOp::GreaterThan,
+            BinOp::GreaterThanOrEqual => TackyBinOp::GreaterThanOrEqual,
         }
     }
 }

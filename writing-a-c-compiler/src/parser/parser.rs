@@ -60,7 +60,7 @@ impl<'a> Parser<'a> {
                 let op = self.tokens.next().unwrap();
 
                 left = Box::new(Node::Expression(Expression::Binary {
-                    operator: BinaryOperator::try_from(op)?,
+                    operator: BinOp::try_from(op)?,
                     left,
                     right: Box::new(self.parse_expression(token_precedence + 1)?),
                 }));
@@ -77,8 +77,8 @@ impl<'a> Parser<'a> {
 
         match token {
             Token::Constant(constant) => Ok(Node::Expression(Expression::Constant(*constant))),
-            Token::Hyphen | Token::Tilde => {
-                let operator = UnaryOperator::try_from(token)?;
+            Token::Hyphen | Token::Tilde | Token::Bang => {
+                let operator = UnOp::try_from(token)?;
                 let expression = Box::new(self.parse_factor()?);
                 Ok(Node::Expression(Expression::Unary {
                     operator,
@@ -115,6 +115,13 @@ impl<'a> Parser<'a> {
             Token::Ampersand => 80,
             Token::Carrot => 75,
             Token::Pipe => 70,
+            Token::LessThan
+            | Token::LessThanOrEqual
+            | Token::GreaterThan
+            | Token::GreaterThanOrEqual => 65,
+            Token::DoubleEqual | Token::BangEqual => 60,
+            Token::DoubleAmpersand => 10,
+            Token::DoublePipe => 5,
             _ => -1,
         }
     }
@@ -148,7 +155,7 @@ mod tests {
         }
     }
 
-    fn binary(operator: BinaryOperator, left: Expression, right: Expression) -> Expression {
+    fn binary(operator: BinOp, left: Expression, right: Expression) -> Expression {
         Expression::Binary {
             operator,
             left: Box::new(Node::Expression(left)),
@@ -180,21 +187,13 @@ mod tests {
 
         let expected = expected(Node::Statement(Statement::Return(Box::new(
             Node::Expression(binary(
-                BinaryOperator::Subtract,
+                BinOp::Subtract,
                 binary(
-                    BinaryOperator::Multiply,
-                    binary(
-                        BinaryOperator::Add,
-                        Expression::Constant(6),
-                        Expression::Constant(4),
-                    ),
+                    BinOp::Multiply,
+                    binary(BinOp::Add, Expression::Constant(6), Expression::Constant(4)),
                     Expression::Constant(3),
                 ),
-                binary(
-                    BinaryOperator::Add,
-                    Expression::Constant(5),
-                    Expression::Constant(1),
-                ),
+                binary(BinOp::Add, Expression::Constant(5), Expression::Constant(1)),
             )),
         ))));
 
@@ -210,7 +209,7 @@ mod tests {
 
         let expected = expected(Node::Statement(Statement::Return(Box::new(
             Node::Expression(binary(
-                BinaryOperator::Or,
+                BinOp::Or,
                 Expression::Constant(3),
                 Expression::Constant(5),
             )),
@@ -235,13 +234,13 @@ mod tests {
 
         let expected = expected(Node::Statement(Statement::Return(Box::new(
             Node::Expression(binary(
-                BinaryOperator::Xor,
+                BinOp::Xor,
                 Expression::Constant(3),
                 binary(
-                    BinaryOperator::And,
+                    BinOp::And,
                     Expression::Constant(5),
                     binary(
-                        BinaryOperator::LShift,
+                        BinOp::LShift,
                         Expression::Constant(12),
                         Expression::Constant(100),
                     ),
@@ -271,20 +270,65 @@ mod tests {
 
         let expected = expected(Node::Statement(Statement::Return(Box::new(
             Node::Expression(binary(
-                BinaryOperator::LShift,
+                BinOp::LShift,
                 binary(
-                    BinaryOperator::Add,
+                    BinOp::Add,
                     Expression::Constant(3),
                     binary(
-                        BinaryOperator::Or,
+                        BinOp::Or,
                         Expression::Unary {
-                            operator: UnaryOperator::Complement,
+                            operator: UnOp::Complement,
                             expression: Box::new(Node::Expression(Expression::Constant(5))),
                         },
                         Expression::Constant(12),
                     ),
                 ),
                 Expression::Constant(100),
+            )),
+        ))));
+
+        assert_eq!(ast, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_logical_precedence() -> Result<(), String> {
+        let tokens = input(vec![
+            Token::Constant(3),
+            Token::DoubleAmpersand,
+            Token::Constant(5),
+            Token::LessThan,
+            Token::Constant(12),
+            Token::LessThanOrEqual,
+            Token::Constant(100),
+            Token::DoublePipe,
+            Token::Constant(7),
+            Token::GreaterThanOrEqual,
+            Token::Constant(124),
+        ]);
+        let ast = Parser::new(&tokens).parse().expect("parsing failed");
+
+        let expected = expected(Node::Statement(Statement::Return(Box::new(
+            Node::Expression(binary(
+                BinOp::DoublePipe,
+                binary(
+                    BinOp::DoubleAmpersand,
+                    Expression::Constant(3),
+                    binary(
+                        BinOp::LessThanOrEqual,
+                        binary(
+                            BinOp::LessThan,
+                            Expression::Constant(5),
+                            Expression::Constant(12),
+                        ),
+                        Expression::Constant(100),
+                    ),
+                ),
+                binary(
+                    BinOp::GreaterThanOrEqual,
+                    Expression::Constant(7),
+                    Expression::Constant(124),
+                ),
             )),
         ))));
 

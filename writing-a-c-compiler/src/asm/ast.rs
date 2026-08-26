@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 
-use crate::tacky::{TackyBinaryOperator, TackyUnaryOperator, TackyValue};
+use crate::tacky::{TackyBinOp, TackyUnOp, TackyValue};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum AsmNode {
@@ -35,11 +35,11 @@ pub enum Instruction {
         dst: Operand,
     },
     Unary {
-        operator: AsmUnaryOperator,
+        operator: AsmUnOp,
         operand: Operand,
     },
     Binary {
-        operator: AsmBinaryOperator,
+        operator: AsmBinOp,
         src: Operand,
         dst: Operand,
     },
@@ -47,39 +47,85 @@ pub enum Instruction {
     Cdq,
     AllocateStack(i64),
     Ret,
+    Cmp {
+        operand1: Operand,
+        operand2: Operand,
+    },
+    Jmp(String),
+    JumpCC {
+        cond_code: CondCode,
+        target: String,
+    },
+    SetCC {
+        cond_code: CondCode,
+        operand: Operand,
+    },
+    Label(String),
 }
 
 impl Instruction {
     pub fn to_asm(&self) -> String {
         match self {
             Instruction::Mov { src, dst } => {
-                format!("movl\t{}, {}", src.to_asm(), dst.to_asm())
+                format!(
+                    "\n\tmovl\t{}, {}",
+                    src.to_asm(RegisterSize::Four),
+                    dst.to_asm(RegisterSize::Four)
+                )
             }
-            Instruction::Unary { operator, operand } => {
-                format!("{}\t{}", operator.to_asm(), operand.to_asm())
-            }
-            Instruction::Binary { operator, src, dst } => match operator {
-                AsmBinaryOperator::Imul
-                | AsmBinaryOperator::Add
-                | AsmBinaryOperator::Sub
-                | AsmBinaryOperator::And
-                | AsmBinaryOperator::Or
-                | AsmBinaryOperator::Xor => {
-                    format!("{}\t{}, {}", operator.to_asm(), src.to_asm(), dst.to_asm(),)
-                }
-                AsmBinaryOperator::LShift | AsmBinaryOperator::RShift => {
-                    format!("{}\t%cl, {}", operator.to_asm(), dst.to_asm(),)
-                }
+            Instruction::Unary { operator, operand } => match operator {
+                _ => format!(
+                    "{}\t{}",
+                    operator.to_asm(),
+                    operand.to_asm(RegisterSize::Four)
+                ),
             },
-            Instruction::Cdq => format!("cdq"),
-            Instruction::Idiv(operand) => format!("idivl\t{}", operand.to_asm()),
+            Instruction::Binary { operator, src, dst } => match operator {
+                AsmBinOp::Imul
+                | AsmBinOp::Add
+                | AsmBinOp::Sub
+                | AsmBinOp::And
+                | AsmBinOp::Or
+                | AsmBinOp::Xor => {
+                    format!(
+                        "\n\t{}\t{}, {}",
+                        operator.to_asm(),
+                        src.to_asm(RegisterSize::Four),
+                        dst.to_asm(RegisterSize::Four),
+                    )
+                }
+                AsmBinOp::LShift | AsmBinOp::RShift => {
+                    format!(
+                        "\n\t{}\t%cl, {}",
+                        operator.to_asm(),
+                        dst.to_asm(RegisterSize::Four),
+                    )
+                }
+                _ => panic!("unknown bin operator for asm conversion"),
+            },
+            Instruction::Cdq => format!("\n\tcdq"),
+            Instruction::Idiv(operand) => {
+                format!("\n\tidivl\t{}", operand.to_asm(RegisterSize::Four))
+            }
             Instruction::Ret => {
-                let mut ret = String::from("movq\t%rbp, %rsp\n");
+                let mut ret = String::from("\n\tmovq\t%rbp, %rsp\n");
                 ret.push_str("\tpopq\t%rbp\n");
-                ret.push_str("\tret");
+                ret.push_str("\tret\n");
                 ret
             }
-            Instruction::AllocateStack(offset) => format!("subq\t${offset}, %rsp"),
+            Instruction::AllocateStack(offset) => format!("\tsubq\t${offset}, %rsp"),
+            Instruction::Cmp { operand1, operand2 } => format!(
+                "\n\tcmpl\t{}, {}",
+                operand1.to_asm(RegisterSize::Four),
+                operand2.to_asm(RegisterSize::Four)
+            ),
+            Instruction::Jmp(identifier) => format!("\n\tjmp\t.L{identifier}"),
+            Instruction::JumpCC { cond_code, target } => format!("\n\tj{cond_code}\t.L{target}"),
+            Instruction::SetCC { cond_code, operand } => {
+                println!("cond_code {}", cond_code);
+                format!("\n\tset{cond_code}\t{}", operand.to_asm(RegisterSize::One))
+            }
+            Instruction::Label(identifier) => format!("\n.L{identifier}:"),
         }
     }
 }
@@ -94,47 +140,56 @@ impl Display for Instruction {
             Instruction::Idiv(operand) => write!(f, "/ {operand}"),
             Instruction::AllocateStack(value) => write!(f, "alloc {value}"),
             Instruction::Ret => write!(f, "ret"),
+            Instruction::Cmp { operand1, operand2 } => write!(f, "cmpl\t{operand1}, {operand2}"),
+            Instruction::Jmp(identifier) => write!(f, "jmp\t{identifier}"),
+            Instruction::JumpCC { cond_code, target } => write!(f, "je\t${cond_code}, {target}"),
+            Instruction::SetCC { cond_code, operand } => write!(f, "je\t${cond_code}, {operand}"),
+            Instruction::Label(identifier) => write!(f, "label\t{identifier}"),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum AsmUnaryOperator {
+pub enum AsmUnOp {
     Neg,
+    Compl,
     Not,
 }
 
-impl AsmUnaryOperator {
+impl AsmUnOp {
     pub fn to_asm(&self) -> String {
         match self {
-            AsmUnaryOperator::Neg => "negl".into(),
-            AsmUnaryOperator::Not => "notl".into(),
+            AsmUnOp::Neg => "\n\tnegl".into(),
+            AsmUnOp::Compl => "\n\tnotl".into(),
+            AsmUnOp::Not => panic!("! has no direct asm translation"),
         }
     }
 }
 
-impl TryFrom<&TackyUnaryOperator> for AsmUnaryOperator {
+impl TryFrom<&TackyUnOp> for AsmUnOp {
     type Error = String;
 
-    fn try_from(value: &TackyUnaryOperator) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: &TackyUnOp) -> std::result::Result<Self, Self::Error> {
         match value {
-            TackyUnaryOperator::Negate => Ok(Self::Neg),
-            TackyUnaryOperator::Complement => Ok(Self::Not),
+            TackyUnOp::Negate => Ok(Self::Neg),
+            TackyUnOp::Complement => Ok(Self::Compl),
+            TackyUnOp::Not => Ok(Self::Not),
         }
     }
 }
 
-impl Display for AsmUnaryOperator {
+impl Display for AsmUnOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self {
-            AsmUnaryOperator::Neg => write!(f, "-"),
-            AsmUnaryOperator::Not => write!(f, "~"),
+            AsmUnOp::Neg => write!(f, "-"),
+            AsmUnOp::Compl => write!(f, "~"),
+            AsmUnOp::Not => write!(f, "!"),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum AsmBinaryOperator {
+pub enum AsmBinOp {
     Add,
     Sub,
     Imul,
@@ -143,52 +198,76 @@ pub enum AsmBinaryOperator {
     Xor,
     LShift,
     RShift,
+    Equal,
+    NotEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    LessThan,
+    LessThanOrEqual,
 }
 
-impl AsmBinaryOperator {
+impl AsmBinOp {
     pub fn to_asm(&self) -> String {
         match self {
-            AsmBinaryOperator::Add => "addl".into(),
-            AsmBinaryOperator::Sub => "subl".into(),
-            AsmBinaryOperator::Imul => "imull".into(),
-            AsmBinaryOperator::And => "andl".into(),
-            AsmBinaryOperator::Or => "orl ".into(),
-            AsmBinaryOperator::Xor => "xorl".into(),
-            AsmBinaryOperator::LShift => "shll".into(),
-            AsmBinaryOperator::RShift => "shrl".into(),
+            AsmBinOp::Add => "addl".into(),
+            AsmBinOp::Sub => "subl".into(),
+            AsmBinOp::Imul => "imull".into(),
+            AsmBinOp::And => "andl".into(),
+            AsmBinOp::Or => "orl ".into(),
+            AsmBinOp::Xor => "xorl".into(),
+            AsmBinOp::LShift => "shll".into(),
+            AsmBinOp::RShift => "shrl".into(),
+            AsmBinOp::Equal => "e".into(),
+            AsmBinOp::NotEqual => "ne".into(),
+            AsmBinOp::GreaterThan => "g".into(),
+            AsmBinOp::GreaterThanOrEqual => "ge".into(),
+            AsmBinOp::LessThan => "l".into(),
+            AsmBinOp::LessThanOrEqual => "le".into(),
         }
     }
 }
 
-impl TryFrom<&TackyBinaryOperator> for AsmBinaryOperator {
+impl TryFrom<&TackyBinOp> for AsmBinOp {
     type Error = String;
 
-    fn try_from(value: &TackyBinaryOperator) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: &TackyBinOp) -> std::result::Result<Self, Self::Error> {
         match value {
-            TackyBinaryOperator::Add => Ok(Self::Add),
-            TackyBinaryOperator::Subtract => Ok(Self::Sub),
-            TackyBinaryOperator::Multiply => Ok(Self::Imul),
-            TackyBinaryOperator::And => Ok(Self::And),
-            TackyBinaryOperator::Or => Ok(Self::Or),
-            TackyBinaryOperator::Xor => Ok(Self::Xor),
-            TackyBinaryOperator::LShift => Ok(Self::LShift),
-            TackyBinaryOperator::RShift => Ok(Self::RShift),
+            TackyBinOp::Add => Ok(Self::Add),
+            TackyBinOp::Subtract => Ok(Self::Sub),
+            TackyBinOp::Multiply => Ok(Self::Imul),
+            TackyBinOp::And => Ok(Self::And),
+            TackyBinOp::Or => Ok(Self::Or),
+            TackyBinOp::Xor => Ok(Self::Xor),
+            TackyBinOp::LShift => Ok(Self::LShift),
+            TackyBinOp::RShift => Ok(Self::RShift),
+            TackyBinOp::Equal => Ok(Self::Equal),
+            TackyBinOp::NotEqual => Ok(Self::NotEqual),
+            TackyBinOp::GreaterThan => Ok(Self::GreaterThan),
+            TackyBinOp::GreaterThanOrEqual => Ok(Self::GreaterThanOrEqual),
+            TackyBinOp::LessThan => Ok(Self::LessThan),
+            TackyBinOp::LessThanOrEqual => Ok(Self::LessThanOrEqual),
             _ => Err(format!("unknown TACKY binary operator {value}")),
         }
     }
 }
 
-impl Display for AsmBinaryOperator {
+impl Display for AsmBinOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self {
-            AsmBinaryOperator::Add => write!(f, "+"),
-            AsmBinaryOperator::Sub => write!(f, "-"),
-            AsmBinaryOperator::Imul => write!(f, "*"),
-            AsmBinaryOperator::And => write!(f, "&"),
-            AsmBinaryOperator::Or => write!(f, "|"),
-            AsmBinaryOperator::Xor => write!(f, "^"),
-            AsmBinaryOperator::LShift => write!(f, "<<"),
-            AsmBinaryOperator::RShift => write!(f, ">>"),
+            AsmBinOp::Add => write!(f, "+"),
+            AsmBinOp::Sub => write!(f, "-"),
+            AsmBinOp::Imul => write!(f, "*"),
+            AsmBinOp::And => write!(f, "&"),
+            AsmBinOp::Or => write!(f, "|"),
+            AsmBinOp::Xor => write!(f, "^"),
+            AsmBinOp::LShift => write!(f, "<<"),
+            AsmBinOp::RShift => write!(f, ">>"),
+            AsmBinOp::Equal => write!(f, "=="),
+            AsmBinOp::NotEqual => write!(f, "!="),
+            AsmBinOp::GreaterThan => write!(f, ">"),
+            AsmBinOp::GreaterThanOrEqual => write!(f, ">="),
+            AsmBinOp::LessThan => write!(f, "<"),
+            AsmBinOp::LessThanOrEqual => write!(f, "<="),
         }
     }
 }
@@ -202,10 +281,10 @@ pub enum Operand {
 }
 
 impl Operand {
-    pub fn to_asm(&self) -> String {
+    pub fn to_asm(&self, register_size: RegisterSize) -> String {
         match self {
             Operand::Imm(value) => format!("${value}"),
-            Operand::Register(register) => register.to_string(),
+            Operand::Register(register) => register.to_asm(register_size),
             Operand::Stack(offset) => format!("{offset}(%rbp)"),
             Operand::Pseudo(pseudo) => pseudo.into(),
         }
@@ -227,11 +306,17 @@ impl Display for Operand {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self {
             Operand::Imm(value) => write!(f, "{}", value),
-            Operand::Register(register) => write!(f, "{register}"),
+            Operand::Register(register) => write!(f, "{:?}", register),
             Operand::Pseudo(pseudo) => write!(f, "{pseudo}"),
             Operand::Stack(value) => write!(f, "{value}"),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum RegisterSize {
+    One,
+    Four,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -244,15 +329,69 @@ pub enum Register {
     Cl, // bitwise left and right shift
 }
 
-impl Display for Register {
+impl Register {
+    fn to_asm(&self, size: RegisterSize) -> String {
+        match &self {
+            Register::Eax => match size {
+                RegisterSize::One => format!("%al"),
+                RegisterSize::Four => format!("%eax"),
+            },
+            Register::Ecx => format!("%ecx"),
+            Register::Edx => match size {
+                RegisterSize::One => format!("%dl"),
+                RegisterSize::Four => format!("%edx"),
+            },
+            Register::R10d => match size {
+                RegisterSize::One => format!("%r10b"),
+                RegisterSize::Four => format!("%r10d"),
+            },
+            Register::R11d => match size {
+                RegisterSize::One => format!("%r11b"),
+                RegisterSize::Four => format!("%r11d"),
+            },
+            Register::Cl => format!("%cl"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum CondCode {
+    E,
+    Ne,
+    G,
+    Ge,
+    L,
+    Le,
+}
+
+impl TryFrom<&TackyBinOp> for CondCode {
+    type Error = String;
+
+    fn try_from(value: &TackyBinOp) -> std::result::Result<Self, Self::Error> {
+        match value {
+            TackyBinOp::Equal => Ok(Self::E),
+            TackyBinOp::NotEqual => Ok(Self::Ne),
+            TackyBinOp::GreaterThan => Ok(Self::G),
+            TackyBinOp::GreaterThanOrEqual => Ok(Self::Ge),
+            TackyBinOp::LessThan => Ok(Self::L),
+            TackyBinOp::LessThanOrEqual => Ok(Self::Le),
+            _ => {
+                let message = format!("invalid tacky bin op for cond code conversion: {value}");
+                panic!("{message}")
+            }
+        }
+    }
+}
+
+impl Display for CondCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self {
-            Register::Eax => write!(f, "%eax"),
-            Register::Ecx => write!(f, "%ecx"),
-            Register::Edx => write!(f, "%edx"),
-            Register::R10d => write!(f, "%r10d"),
-            Register::R11d => write!(f, "%r11d"),
-            Register::Cl => write!(f, "%cl"),
+            CondCode::E => write!(f, "e"),
+            CondCode::Ne => write!(f, "ne"),
+            CondCode::G => write!(f, "g"),
+            CondCode::Ge => write!(f, "ge"),
+            CondCode::L => write!(f, "l"),
+            CondCode::Le => write!(f, "le"),
         }
     }
 }

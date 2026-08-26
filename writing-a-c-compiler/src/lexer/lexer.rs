@@ -158,113 +158,71 @@ impl<'a> Lexer<'a> {
 mod tests {
     use super::*;
 
+    fn input(variance: &str) -> String {
+        format!("int main(void) {{ return {variance};}}")
+    }
+
+    fn expected(tokens: Vec<Token>) -> Vec<Token> {
+        let mut result = vec![
+            Token::Int,
+            Token::Identifier("main".into()),
+            Token::OpenParen,
+            Token::Void,
+            Token::CloseParen,
+            Token::OpenBrace,
+            Token::Return,
+        ];
+        result.extend(tokens);
+        result.extend(vec![Token::SemiColon, Token::CloseBrace]);
+        return result;
+    }
+
     #[test]
     fn test_full_function() {
-        let input = "int main ( void ) { return 100 ; }";
-        let tokens = Lexer::new(&input).lex().expect("lexing failed");
+        let tokens = Lexer::new(&input("100")).lex().expect("lexing failed");
 
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Int,
-                Token::Identifier("main".into()),
-                Token::OpenParen,
-                Token::Void,
-                Token::CloseParen,
-                Token::OpenBrace,
-                Token::Return,
-                Token::Constant(100),
-                Token::SemiColon,
-                Token::CloseBrace,
-            ]
-        );
+        assert_eq!(tokens, expected(vec![Token::Constant(100)]));
     }
 
     #[test]
     fn test_negate() {
-        let input = "int main ( void ) { return -100; }";
-        let tokens = Lexer::new(&input).lex().expect("lexing failed");
+        let tokens = Lexer::new(&input("-100")).lex().expect("lexing failed");
 
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Int,
-                Token::Identifier("main".into()),
-                Token::OpenParen,
-                Token::Void,
-                Token::CloseParen,
-                Token::OpenBrace,
-                Token::Return,
-                Token::Hyphen,
-                Token::Constant(100),
-                Token::SemiColon,
-                Token::CloseBrace,
-            ]
-        );
+        assert_eq!(tokens, expected(vec![Token::Hyphen, Token::Constant(100)]));
     }
 
     #[test]
     fn test_complement() {
-        let input = "int main ( void ) { return ~100; }";
-        let tokens = Lexer::new(&input).lex().expect("lexing failed");
+        let tokens = Lexer::new(&input("~100")).lex().expect("lexing failed");
 
-        assert_eq!(
-            tokens,
-            vec![
-                Token::Int,
-                Token::Identifier("main".into()),
-                Token::OpenParen,
-                Token::Void,
-                Token::CloseParen,
-                Token::OpenBrace,
-                Token::Return,
-                Token::Tilde,
-                Token::Constant(100),
-                Token::SemiColon,
-                Token::CloseBrace,
-            ]
-        );
+        assert_eq!(tokens, expected(vec![Token::Tilde, Token::Constant(100)]));
     }
 
     #[test]
     fn test_simple_binary() {
-        let input = "int main ( void ) { return 100 + 300; }";
-        let tokens = Lexer::new(&input).lex().expect("lexing failed");
+        let tokens = Lexer::new(&input("100 + 300"))
+            .lex()
+            .expect("lexing failed");
 
         assert_eq!(
             tokens,
-            vec![
-                Token::Int,
-                Token::Identifier("main".into()),
-                Token::OpenParen,
-                Token::Void,
-                Token::CloseParen,
-                Token::OpenBrace,
-                Token::Return,
+            expected(vec![
                 Token::Constant(100),
                 Token::Plus,
-                Token::Constant(300),
-                Token::SemiColon,
-                Token::CloseBrace,
-            ]
+                Token::Constant(300)
+            ])
         );
     }
 
     #[test]
     fn test_grouped() {
-        let input = "int main ( void ) { return (6 + 4) * 3 - (5 + 1); }";
-        let tokens = Lexer::new(&input).lex().expect("lexing failed");
+        let tokens = Lexer::new(&input("(6 + 4) * 3 - (5 + 1)"))
+            .lex()
+            .expect("lexing failed");
 
         assert_eq!(
             tokens,
-            vec![
-                Token::Int,
-                Token::Identifier("main".into()),
-                Token::OpenParen,
-                Token::Void,
-                Token::CloseParen,
-                Token::OpenBrace,
-                Token::Return,
+            expected(vec![
                 Token::OpenParen,
                 Token::Constant(6),
                 Token::Plus,
@@ -278,80 +236,93 @@ mod tests {
                 Token::Plus,
                 Token::Constant(1),
                 Token::CloseParen,
-                Token::SemiColon,
-                Token::CloseBrace,
-            ]
+            ])
         );
     }
 
     #[test]
-    fn test_bitwise_and() {
-        let tokens = Lexer::new(&"3 & 5").lex().expect("lexing failed");
+    fn test_and() {
+        let tokens = Lexer::new(&input("3 & 5")).lex().expect("lexing failed");
+
         assert_eq!(
             tokens,
-            [Token::Constant(3), Token::Ampersand, Token::Constant(5)]
+            expected(vec![
+                Token::Constant(3),
+                Token::Ampersand,
+                Token::Constant(5)
+            ])
         )
     }
 
     #[test]
-    fn test_bitwise_or() {
-        let tokens = Lexer::new(&"1 | 2").lex().expect("lexing failed");
+    fn test_or() {
+        let tokens = Lexer::new(&input("1 | 2")).lex().expect("lexing failed");
         assert_eq!(
             tokens,
-            [Token::Constant(1), Token::Pipe, Token::Constant(2)]
+            expected(vec![Token::Constant(1), Token::Pipe, Token::Constant(2)])
         )
     }
 
     #[test]
-    fn test_bitwise_xor() {
-        let tokens = Lexer::new(&"7 ^ 1").lex().expect("lexing failed");
+    fn test_xor() {
+        let tokens = Lexer::new(&input("7 ^ 1")).lex().expect("lexing failed");
+
         assert_eq!(
             tokens,
-            [Token::Constant(7), Token::Carrot, Token::Constant(1)]
+            expected(vec![Token::Constant(7), Token::Carrot, Token::Constant(1)])
         )
     }
 
     #[test]
-    fn test_bitwise_left_shift() {
-        let tokens = Lexer::new(&"35 << 2").lex().expect("lexing failed");
+    fn test_left_shift() {
+        let tokens = Lexer::new(&input("35 << 2")).lex().expect("lexing failed");
+
         assert_eq!(
             tokens,
-            [Token::Constant(35), Token::LShift, Token::Constant(2)]
+            expected(vec![Token::Constant(35), Token::LShift, Token::Constant(2)])
         )
     }
 
     #[test]
-    fn test_bitwise_right_shift() {
-        let tokens = Lexer::new(&"1000 >> 4").lex().expect("lexing failed");
-        assert_eq!(
-            tokens,
-            [Token::Constant(1000), Token::RShift, Token::Constant(4)]
-        )
-    }
-
-    #[test]
-    fn test_bitwise_right_shift_negative() {
-        let tokens = Lexer::new(&"-5 >> 30").lex().expect("lexing failed");
-        assert_eq!(
-            tokens,
-            [
-                Token::Hyphen,
-                Token::Constant(5),
-                Token::RShift,
-                Token::Constant(30)
-            ]
-        )
-    }
-
-    #[test]
-    fn test_bitwise_precedence() {
-        let tokens = Lexer::new(&"40 << 4 + 12 >> 1")
+    fn test_right_shift() {
+        let tokens = Lexer::new(&input("1000 >> 4"))
             .lex()
             .expect("lexing failed");
 
         assert_eq!(
             tokens,
-            [
+            expected(vec![
+                Token::Constant(1000),
+                Token::RShift,
+                Token::Constant(4)
+            ])
+        )
+    }
+
+    #[test]
+    fn test_right_shift_negative() {
+        let tokens = Lexer::new(&input("-5 >> 30")).lex().expect("lexing failed");
+
+        assert_eq!(
+            tokens,
+            expected(vec![
+                Token::Hyphen,
+                Token::Constant(5),
+                Token::RShift,
+                Token::Constant(30)
+            ])
+        )
+    }
+
+    #[test]
+    fn test_precedence() {
+        let tokens = Lexer::new(&input("40 << 4 + 12 >> 1"))
+            .lex()
+            .expect("lexing failed");
+
+        assert_eq!(
+            tokens,
+            expected(vec![
                 Token::Constant(40),
                 Token::LShift,
                 Token::Constant(4),
@@ -359,33 +330,34 @@ mod tests {
                 Token::Constant(12),
                 Token::RShift,
                 Token::Constant(1)
-            ]
+            ])
         )
     }
 
     #[test]
     fn test_bangs() {
-        let tokens = Lexer::new(&"!5 ! 30").lex().expect("lexing failed");
+        let tokens = Lexer::new(&input("!5 ! 30")).lex().expect("lexing failed");
+
         assert_eq!(
             tokens,
-            [
+            expected(vec![
                 Token::Bang,
                 Token::Constant(5),
                 Token::Bang,
                 Token::Constant(30)
-            ]
+            ])
         )
     }
 
     #[test]
     fn test_double_tokens() {
-        let tokens = Lexer::new(&"!!=5 != 30 && || ==")
+        let tokens = Lexer::new(&input("!!=5 != 30 && || =="))
             .lex()
             .expect("lexing failed");
 
         assert_eq!(
             tokens,
-            [
+            expected(vec![
                 Token::Bang,
                 Token::BangEqual,
                 Token::Constant(5),
@@ -394,19 +366,19 @@ mod tests {
                 Token::DoubleAmpersand,
                 Token::DoublePipe,
                 Token::DoubleEqual,
-            ]
+            ])
         )
     }
 
     #[test]
     fn test_lt_lte_gt_gte() {
-        let tokens = Lexer::new(&"3 < 4 <= 4 > 3 >= 3")
+        let tokens = Lexer::new(&input("3 < 4 <= 4 > 3 >= 3"))
             .lex()
             .expect("lexing failed");
 
         assert_eq!(
             tokens,
-            [
+            expected(vec![
                 Token::Constant(3),
                 Token::LessThan,
                 Token::Constant(4),
@@ -416,7 +388,7 @@ mod tests {
                 Token::Constant(3),
                 Token::GreaterThanOrEqual,
                 Token::Constant(3),
-            ]
+            ])
         )
     }
 }

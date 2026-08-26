@@ -1,7 +1,7 @@
 import pytest
-from runner import TestRunner
+from runner import Runner
 
-runner = TestRunner("files/02")
+runner = Runner("files/02")
 
 execution_tests = {
     "bitwise_int_min.c": 2147483646,

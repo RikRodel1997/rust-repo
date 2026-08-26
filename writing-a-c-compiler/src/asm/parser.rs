@@ -1,10 +1,10 @@
 use std::mem::discriminant;
 use std::{collections::HashMap, vec};
 
-use crate::asm::ast::AsmBinaryOperator;
-use crate::tacky::TackyBinaryOperator;
+use crate::asm::ast::{AsmBinOp, CondCode};
+use crate::tacky::TackyBinOp;
 use crate::{
-    asm::ast::{AsmNode, AsmUnaryOperator, Instruction, Operand, Register},
+    asm::ast::{AsmNode, AsmUnOp, Instruction, Operand, Register},
     tacky::{TackyInstruction, TackyNode},
 };
 
@@ -45,29 +45,44 @@ impl<'a> AsmParser<'a> {
 
         for instruction in instructions.iter() {
             match instruction {
-                TackyInstruction::Return(value) => {
-                    let src = Operand::try_from(value)?;
-
-                    result.push(Instruction::Mov {
-                        src,
+                TackyInstruction::Return(value) => result.extend(vec![
+                    Instruction::Mov {
+                        src: Operand::try_from(value)?,
                         dst: Operand::Register(Register::Eax),
-                    });
-
-                    result.push(Instruction::Ret);
-                }
+                    },
+                    Instruction::Ret,
+                ]),
                 TackyInstruction::Unary { operator, src, dst } => {
-                    let operator = AsmUnaryOperator::try_from(operator)?;
+                    let operator = AsmUnOp::try_from(operator)?;
                     let src = Operand::try_from(src)?;
                     let dst = Operand::try_from(dst)?;
 
-                    result.push(Instruction::Mov {
-                        src,
-                        dst: dst.clone(),
-                    });
-                    result.push(Instruction::Unary {
-                        operator,
-                        operand: dst,
-                    });
+                    match operator {
+                        AsmUnOp::Not => result.extend(vec![
+                            Instruction::Cmp {
+                                operand1: Operand::Imm(0),
+                                operand2: src,
+                            },
+                            Instruction::Mov {
+                                src: Operand::Imm(0),
+                                dst: dst.clone(),
+                            },
+                            Instruction::SetCC {
+                                cond_code: CondCode::E,
+                                operand: dst,
+                            },
+                        ]),
+                        _ => result.extend(vec![
+                            Instruction::Mov {
+                                src,
+                                dst: dst.clone(),
+                            },
+                            Instruction::Unary {
+                                operator,
+                                operand: dst,
+                            },
+                        ]),
+                    }
                 }
                 TackyInstruction::Binary {
                     operator,
@@ -75,59 +90,94 @@ impl<'a> AsmParser<'a> {
                     src2,
                     dst,
                 } => match operator {
-                    TackyBinaryOperator::Divide => {
-                        let src1 = Operand::try_from(src1)?;
-                        let src2 = Operand::try_from(src2)?;
+                    TackyBinOp::Divide | TackyBinOp::Remainder => result.extend(vec![
+                        Instruction::Mov {
+                            src: Operand::try_from(src1)?,
+                            dst: Operand::Register(Register::Eax),
+                        },
+                        Instruction::Cdq,
+                        Instruction::Idiv(Operand::try_from(src2)?),
+                        Instruction::Mov {
+                            src: Operand::Register(match operator {
+                                TackyBinOp::Divide => Register::Eax,
+                                TackyBinOp::Remainder => Register::Edx,
+                                _ => {
+                                    let message = format!("unknown operator {operator}");
+                                    panic!("{message}");
+                                }
+                            }),
+                            dst: Operand::try_from(dst)?,
+                        },
+                    ]),
+                    TackyBinOp::Equal
+                    | TackyBinOp::NotEqual
+                    | TackyBinOp::GreaterThan
+                    | TackyBinOp::GreaterThanOrEqual
+                    | TackyBinOp::LessThan
+                    | TackyBinOp::LessThanOrEqual => {
                         let dst = Operand::try_from(dst)?;
 
                         result.extend(vec![
-                            Instruction::Mov {
-                                src: src1,
-                                dst: Operand::Register(Register::Eax),
+                            Instruction::Cmp {
+                                operand1: Operand::try_from(src2)?,
+                                operand2: Operand::try_from(src1)?,
                             },
-                            Instruction::Cdq,
-                            Instruction::Idiv(src2),
                             Instruction::Mov {
-                                src: Operand::Register(Register::Eax),
-                                dst,
+                                src: Operand::Imm(0),
+                                dst: dst.clone(),
                             },
-                        ]);
-                    }
-                    TackyBinaryOperator::Remainder => {
-                        let src1 = Operand::try_from(src1)?;
-                        let src2 = Operand::try_from(src2)?;
-                        let dst = Operand::try_from(dst)?;
-
-                        result.extend(vec![
-                            Instruction::Mov {
-                                src: src1,
-                                dst: Operand::Register(Register::Eax),
-                            },
-                            Instruction::Cdq,
-                            Instruction::Idiv(src2),
-                            Instruction::Mov {
-                                src: Operand::Register(Register::Edx),
-                                dst,
+                            Instruction::SetCC {
+                                cond_code: CondCode::try_from(operator)?,
+                                operand: dst,
                             },
                         ]);
                     }
                     _ => {
-                        let operator = AsmBinaryOperator::try_from(operator)?;
-                        let src1 = Operand::try_from(src1)?;
-                        let src2 = Operand::try_from(src2)?;
                         let dst = Operand::try_from(dst)?;
 
-                        result.push(Instruction::Mov {
-                            src: src1,
-                            dst: dst.clone(),
-                        });
-                        result.push(Instruction::Binary {
-                            operator,
-                            src: src2,
-                            dst,
-                        });
+                        result.extend(vec![
+                            Instruction::Mov {
+                                src: Operand::try_from(src1)?,
+                                dst: dst.clone(),
+                            },
+                            Instruction::Binary {
+                                operator: AsmBinOp::try_from(operator)?,
+                                src: Operand::try_from(src2)?,
+                                dst,
+                            },
+                        ]);
                     }
                 },
+                TackyInstruction::JumpIfZero { condition, target } => result.extend(vec![
+                    Instruction::Cmp {
+                        operand1: Operand::Imm(0),
+                        operand2: Operand::try_from(condition)?,
+                    },
+                    Instruction::JumpCC {
+                        cond_code: CondCode::E,
+                        target: target.to_string(),
+                    },
+                ]),
+                TackyInstruction::JumpIfNotZero { condition, target } => result.extend(vec![
+                    Instruction::Cmp {
+                        operand1: Operand::Imm(0),
+                        operand2: Operand::try_from(condition)?,
+                    },
+                    Instruction::JumpCC {
+                        cond_code: CondCode::Ne,
+                        target: target.to_string(),
+                    },
+                ]),
+                TackyInstruction::Jump { target } => {
+                    result.push(Instruction::Jmp(target.to_string()))
+                }
+                TackyInstruction::Copy { src, dst } => result.push(Instruction::Mov {
+                    src: Operand::try_from(src)?,
+                    dst: Operand::try_from(dst)?,
+                }),
+                TackyInstruction::Label(label) => {
+                    result.push(Instruction::Label(label.to_string()))
+                }
             }
         }
 
@@ -163,6 +213,19 @@ impl<'a> AsmParser<'a> {
                     }
                     if let Some(new_dst) = self.replace_pseudo(dst.clone()) {
                         *dst = new_dst;
+                    }
+                }
+                Instruction::Cmp { operand1, operand2 } => {
+                    if let Some(new_operand1) = self.replace_pseudo(operand1.clone()) {
+                        *operand1 = new_operand1;
+                    }
+                    if let Some(new_operand2) = self.replace_pseudo(operand2.clone()) {
+                        *operand2 = new_operand2;
+                    }
+                }
+                Instruction::SetCC { operand, .. } => {
+                    if let Some(new_operand) = self.replace_pseudo(operand.clone()) {
+                        *operand = new_operand;
                     }
                 }
                 Instruction::Idiv(operand) => {
@@ -225,11 +288,11 @@ impl<'a> AsmParser<'a> {
                     ]
                 }
                 Instruction::Binary { operator, src, dst } => match operator {
-                    AsmBinaryOperator::Add
-                    | AsmBinaryOperator::Sub
-                    | AsmBinaryOperator::And
-                    | AsmBinaryOperator::Or
-                    | AsmBinaryOperator::Xor => {
+                    AsmBinOp::Add
+                    | AsmBinOp::Sub
+                    | AsmBinOp::And
+                    | AsmBinOp::Or
+                    | AsmBinOp::Xor => {
                         vec![
                             Instruction::Mov {
                                 src,
@@ -242,7 +305,7 @@ impl<'a> AsmParser<'a> {
                             },
                         ]
                     }
-                    AsmBinaryOperator::LShift | AsmBinaryOperator::RShift => {
+                    AsmBinOp::LShift | AsmBinOp::RShift => {
                         vec![
                             Instruction::Mov {
                                 src,
@@ -255,7 +318,7 @@ impl<'a> AsmParser<'a> {
                             },
                         ]
                     }
-                    AsmBinaryOperator::Imul => {
+                    AsmBinOp::Imul => {
                         vec![
                             Instruction::Mov {
                                 src: dst.clone(),
@@ -272,7 +335,20 @@ impl<'a> AsmParser<'a> {
                             },
                         ]
                     }
+                    _ => panic!("unknown bin operator for asm conversion"),
                 },
+                Instruction::Cmp { operand1, operand2 } => {
+                    vec![
+                        Instruction::Mov {
+                            src: operand2,
+                            dst: Operand::Register(Register::R11d),
+                        },
+                        Instruction::Cmp {
+                            operand1,
+                            operand2: Operand::Register(Register::R11d),
+                        },
+                    ]
+                }
                 _ => vec![node],
             })
             .collect();
@@ -341,10 +417,138 @@ mod tests {
     }
 
     #[test]
-    fn test_basic_binary() -> Result<(), String> {
+    fn test_cmp() -> Result<(), String> {
+        let tacky_ir = input(vec![
+            TackyInstruction::JumpIfZero {
+                condition: TackyValue::Constant(123),
+                target: "tmp_false.0".to_string(),
+            },
+            TackyInstruction::JumpIfZero {
+                condition: TackyValue::Constant(523),
+                target: "tmp_false.0".to_string(),
+            },
+            TackyInstruction::Copy {
+                src: TackyValue::Constant(12),
+                dst: TackyValue::Var("tmp.0".to_string()),
+            },
+            TackyInstruction::Jump {
+                target: "tmp_end.0".to_string(),
+            },
+            TackyInstruction::Label("tmp_false.0".to_string()),
+            TackyInstruction::Copy {
+                src: TackyValue::Constant(73432),
+                dst: TackyValue::Var("tmp.0".to_string()),
+            },
+            TackyInstruction::Label("tmp_end.0".to_string()),
+            TackyInstruction::Return(TackyValue::Var("tmp.0".into())),
+        ]);
+        let mut asm_parser = AsmParser::new(&tacky_ir);
+        asm_parser.parse()?;
+        asm_parser.parse_pseudo()?;
+        asm_parser.fix_instructions()?;
+
+        assert_eq!(
+            asm_parser.asm_ast.unwrap(),
+            expected(vec![
+                Instruction::AllocateStack(4),
+                Instruction::Mov {
+                    src: Operand::Imm(123),
+                    dst: Operand::Register(Register::R11d)
+                },
+                Instruction::Cmp {
+                    operand1: Operand::Imm(0),
+                    operand2: Operand::Register(Register::R11d)
+                },
+                Instruction::JumpCC {
+                    cond_code: CondCode::E,
+                    target: "tmp_false.0".to_string(),
+                },
+                Instruction::Mov {
+                    src: Operand::Imm(523),
+                    dst: Operand::Register(Register::R11d)
+                },
+                Instruction::Cmp {
+                    operand1: Operand::Imm(0),
+                    operand2: Operand::Register(Register::R11d)
+                },
+                Instruction::JumpCC {
+                    cond_code: CondCode::E,
+                    target: "tmp_false.0".to_string(),
+                },
+                Instruction::Mov {
+                    src: Operand::Imm(12),
+                    dst: Operand::Stack(-4)
+                },
+                Instruction::Jmp("tmp_end.0".to_string()),
+                Instruction::Label("tmp_false.0".to_string()),
+                Instruction::Mov {
+                    src: Operand::Imm(73432),
+                    dst: Operand::Stack(-4)
+                },
+                Instruction::Label("tmp_end.0".to_string()),
+                Instruction::Mov {
+                    src: Operand::Stack(-4),
+                    dst: Operand::Register(Register::Eax)
+                },
+                Instruction::Ret,
+            ])
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_less_than_or_equal() -> Result<(), String> {
         let tacky_ir = input(vec![
             TackyInstruction::Binary {
-                operator: TackyBinaryOperator::Or,
+                operator: TackyBinOp::LessThanOrEqual,
+                src1: TackyValue::Constant(3),
+                src2: TackyValue::Constant(5),
+                dst: TackyValue::Var("tmp.0".into()),
+            },
+            TackyInstruction::Return(TackyValue::Var("tmp.0".into())),
+        ]);
+        let mut asm_parser = AsmParser::new(&tacky_ir);
+        asm_parser.parse()?;
+        asm_parser.parse_pseudo()?;
+        asm_parser.fix_instructions()?;
+
+        assert_eq!(
+            asm_parser.asm_ast.unwrap(),
+            expected(vec![
+                Instruction::AllocateStack(4),
+                Instruction::Mov {
+                    src: Operand::Imm(3),
+                    dst: Operand::Register(Register::R11d)
+                },
+                Instruction::Cmp {
+                    operand1: Operand::Imm(5),
+                    operand2: Operand::Register(Register::R11d)
+                },
+                Instruction::Mov {
+                    src: Operand::Imm(0),
+                    dst: Operand::Stack(-4)
+                },
+                Instruction::SetCC {
+                    cond_code: CondCode::Le,
+                    operand: Operand::Stack(-4)
+                },
+                Instruction::Mov {
+                    src: Operand::Stack(-4),
+                    dst: Operand::Register(Register::Eax)
+                },
+                Instruction::Ret,
+            ])
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_binary() -> Result<(), String> {
+        let tacky_ir = input(vec![
+            TackyInstruction::Binary {
+                operator: TackyBinOp::Or,
                 src1: TackyValue::Constant(3),
                 src2: TackyValue::Constant(5),
                 dst: TackyValue::Var("tmp.0".into()),
@@ -369,7 +573,7 @@ mod tests {
                     dst: Operand::Register(Register::R10d)
                 },
                 Instruction::Binary {
-                    operator: AsmBinaryOperator::Or,
+                    operator: AsmBinOp::Or,
                     src: Operand::Register(Register::R10d),
                     dst: Operand::Stack(-4)
                 },

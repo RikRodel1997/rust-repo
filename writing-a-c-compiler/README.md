@@ -26,8 +26,8 @@ The formal grammar describes a more strict ruleset for the grammar of a particul
 <stmt> = "return" <exp> ";"
 <exp> = <factor> | <exp> <binop> <exp>
 <factor> = <int> | <unop> <factor> | "(" <exp> ")"
-<unop> = "-" | "~"
-<binop> = "-" | "+" | "*" | "/" | "%"
+<unop> = "-" | "~" | "!"
+<binop> = "-" | "+" | "*" | "/" | "%" | "&&" | "||" | "==" | "!=" | "<" | "<=" | ">" | ">="
 <ident> = ? An identifier token ?
 <int> = ? A constant token ?
 ```
@@ -40,9 +40,14 @@ function = Function(identifier, 1 instruction* body)
 instruction = Return(val) 
               | Unary(unop, val src, val dst)
               | Binary(binop, val src1, val src2, val dst)
+              | Copy(val src, val dst)
+              | Jump(identifier target)
+              | JumpIfZero(val condition, identifier target)
+              | JumpIfNotZero(val condition, identifier target)
+              | Label(identifier)
 val = Constant(int) | Var(identifier)
-unop = Complement | Negate
-binop = Add | Subtract | Multiply | Divide | Remainder
+unop = Complement | Negate | Not
+binop = Add | Subtract | Multiply | Divide | Remainder | Equal | NotEqual | LessThan | LessOrEqual | GreaterThan | GreaterOrEqual
 ```
 
 ## Assembly ASDL

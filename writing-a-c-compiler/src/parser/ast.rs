@@ -40,11 +40,11 @@ impl Display for Statement {
 pub enum Expression {
     Constant(i64),
     Unary {
-        operator: UnaryOperator,
+        operator: UnOp,
         expression: Box<Node>,
     },
     Binary {
-        operator: BinaryOperator,
+        operator: BinOp,
         left: Box<Node>,
         right: Box<Node>,
     },
@@ -68,34 +68,37 @@ impl Display for Expression {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum UnaryOperator {
+pub enum UnOp {
     Complement,
     Negate,
+    Not,
 }
 
-impl Display for UnaryOperator {
+impl Display for UnOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Complement => write!(f, "~"),
             Self::Negate => write!(f, "-"),
+            Self::Not => write!(f, "!"),
         }
     }
 }
 
-impl TryFrom<&Token> for UnaryOperator {
+impl TryFrom<&Token> for UnOp {
     type Error = String;
 
     fn try_from(value: &Token) -> std::result::Result<Self, Self::Error> {
         match value {
             Token::Tilde => Ok(Self::Complement),
             Token::Hyphen => Ok(Self::Negate),
+            Token::Bang => Ok(Self::Not),
             _ => Err(format!("{value} is an invalid unary operator")),
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
-pub enum BinaryOperator {
+pub enum BinOp {
     Add,
     Subtract,
     Multiply,
@@ -106,9 +109,17 @@ pub enum BinaryOperator {
     And,
     Or,
     Xor,
+    DoubleAmpersand,
+    DoublePipe,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
 }
 
-impl Display for BinaryOperator {
+impl Display for BinOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Add => write!(f, "+"),
@@ -121,11 +132,19 @@ impl Display for BinaryOperator {
             Self::And => write!(f, "&"),
             Self::Or => write!(f, "|"),
             Self::Xor => write!(f, "^"),
+            Self::DoubleAmpersand => write!(f, "&&"),
+            Self::DoublePipe => write!(f, "||"),
+            Self::Equal => write!(f, "=="),
+            Self::NotEqual => write!(f, "!="),
+            Self::LessThan => write!(f, "<"),
+            Self::LessThanOrEqual => write!(f, ">"),
+            Self::GreaterThan => write!(f, "<="),
+            Self::GreaterThanOrEqual => write!(f, ">="),
         }
     }
 }
 
-impl TryFrom<&Token> for BinaryOperator {
+impl TryFrom<&Token> for BinOp {
     type Error = String;
 
     fn try_from(value: &Token) -> std::result::Result<Self, Self::Error> {
@@ -140,7 +159,18 @@ impl TryFrom<&Token> for BinaryOperator {
             Token::Ampersand => Ok(Self::And),
             Token::Pipe => Ok(Self::Or),
             Token::Carrot => Ok(Self::Xor),
-            _ => Err(format!("{value} is an invalid binary operator")),
+            Token::DoubleAmpersand => Ok(Self::DoubleAmpersand),
+            Token::DoublePipe => Ok(Self::DoublePipe),
+            Token::DoubleEqual => Ok(Self::Equal),
+            Token::BangEqual => Ok(Self::NotEqual),
+            Token::LessThan => Ok(Self::LessThan),
+            Token::LessThanOrEqual => Ok(Self::LessThanOrEqual),
+            Token::GreaterThan => Ok(Self::GreaterThan),
+            Token::GreaterThanOrEqual => Ok(Self::GreaterThanOrEqual),
+            _ => {
+                let message = format!("token {value} is an invalid binary operator");
+                panic!("{}", message);
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 import pytest
-from runner import TestRunner
+from runner import Runner
 
-runner = TestRunner("files/03")
+runner = Runner("files/03")
 
 execution_tests = {
     "add.c": 3,
